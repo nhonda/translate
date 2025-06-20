@@ -85,6 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['stage'] ?? '') === 'upload
   </style>
 </head>
 <body>
+<?php include 'includes/spinner.php'; ?>
 <header>
   <h1>ファイルアップロード</h1>
   <nav><a href="index.html">トップへ</a></nav>
@@ -101,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['stage'] ?? '') === 'upload
 <?php if ($step === 'form'): ?>
   <h2>アップロード</h2>
   <?php if ($message): ?><p style="color:red;"><?= $message ?></p><?php endif; ?>
-  <form action="upload_file.php" method="post" enctype="multipart/form-data">
+  <form action="upload_file.php" method="post" enctype="multipart/form-data" onsubmit="showSpinner()">
     <input type="hidden" name="stage" value="upload">
     <div class="upload-section">
       <input type="file" name="upload_file" required><br><br>
@@ -113,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['stage'] ?? '') === 'upload
   <p>ファイル名: <?= htmlspecialchars($filename) ?></p>
   <p>文字数: <?= number_format($chars) ?> 文字</p>
   <p>概算料金: ￥<?= number_format($costJpy) ?></p>
-  <form action="translate.php" method="post">
+  <form action="translate.php" method="post" onsubmit="showSpinner()">
     <input type="hidden" name="filename" value="<?= htmlspecialchars($filename) ?>">
     <label>出力形式:
       <select name="out_fmt" required>
@@ -126,5 +127,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['stage'] ?? '') === 'upload
 <?php endif; ?>
 </div>
 </main>
+<script src="spinner.js"></script>
 </body>
 </html>
