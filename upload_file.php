@@ -110,11 +110,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['stage'] ?? '') === 'upload
   </form>
 <?php elseif ($step === 'confirm'): ?>
   <h2>アップロード結果</h2>
-  <p>ファイル名: <?= htmlspecialchars($filename) ?></p>
+  <p>ファイル名: <?= htmlspecialchars($filename, ENT_QUOTES, 'UTF-8') ?></p>
   <p>文字数: <?= number_format($chars) ?> 文字</p>
   <p>概算料金: ￥<?= number_format($costJpy) ?></p>
   <form action="translate.php" method="post">
-    <input type="hidden" name="filename" value="<?= htmlspecialchars($filename) ?>">
+      <input type="hidden" name="filename" value="<?= htmlspecialchars($filename, ENT_QUOTES, 'UTF-8') ?>">
     <label>出力形式:
       <select name="out_fmt" required>
         <option value="pdf">PDF</option>

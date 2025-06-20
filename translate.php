@@ -123,11 +123,15 @@ $resp = json_decode($resp, true);
 
 for ($i = 0; $i < 300; $i++) {
     sleep(4);
-    $stat = json_decode(file_get_contents(
-      "https://api.deepl.com/v2/document/$id?auth_key=".DEEPL_KEY."&document_key=$key"),
-      true);
-    if ($stat['status']==='done') break;
-    if ($stat['status']==='error') die('翻訳エラー: '.$stat['message']);
+    $resp = file_get_contents(
+        "https://api.deepl.com/v2/document/$id?auth_key=" . DEEPL_KEY . "&document_key=$key"
+    );
+    $stat = json_decode($resp, true);
+    if (!is_array($stat) || !isset($stat['status'])) {
+        die('翻訳エラー: API応答が不正です');
+    }
+    if ($stat['status'] === 'done') break;
+    if ($stat['status'] === 'error') die('翻訳エラー: ' . $stat['message']);
 }
 if ($stat['status']!=='done') die('タイムアウト');
 

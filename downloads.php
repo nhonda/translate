@@ -31,9 +31,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['delete'])) {
 </aside>
 <main>
   <div class="card">
-    <?php if (isset($_GET['done'])): ?>
-      <p style="color:green;"><?= htmlspecialchars($_GET['done']) ?> を保存しました。</p>
-    <?php endif; ?>
+  <?php if (isset($_GET['done'])): ?>
+    <p style="color:green;"><?= htmlspecialchars($_GET['done'], ENT_QUOTES, 'UTF-8') ?> を保存しました。</p>
+  <?php endif; ?>
     <?php if (isset($_GET['deleted'])): ?>
       <p style="color:green;">選択したファイルを削除しました。</p>
     <?php endif; ?>
@@ -53,10 +53,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['delete'])) {
           <tbody>
           <?php foreach ($files as $f): ?>
             <tr>
-              <td><?= htmlspecialchars($f) ?></td>
+              <td><?= htmlspecialchars($f, ENT_QUOTES, 'UTF-8') ?></td>
               <td><a href="downloads/<?= rawurlencode($f) ?>" download>ダウンロード</a></td>
               <td style="text-align:center">
-                <input type="checkbox" name="delete[]" value="<?= htmlspecialchars($f) ?>">
+                <input type="checkbox" name="delete[]" value="<?= htmlspecialchars($f, ENT_QUOTES, 'UTF-8') ?>">
               </td>
             </tr>
           <?php endforeach; ?>
