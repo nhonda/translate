@@ -18,22 +18,14 @@ DeepL Translation API Program
    composer require vlucas/phpdotenv mpdf/mpdf phpoffice/phpword smalot/pdfparser
 php-zip が有効になっていない場合は、PHP の拡張モジュールとして zip を追加してください。
 
-リポジトリ直下に .env を作成し、DeepL API キーを設定
-
-ini
-コピーする
-DEEPL_AUTH_KEY=your-api-key
-PHP のビルトインサーバーで起動
-
-bash
-コピーする
-php -S localhost
-http://localhost/upload_file.php にアクセスします。
+リポジトリ直下に .env を作成し、DeepL API キーを設定します。
 
 使い方
-upload_file.php からファイル（TXT, PDF, DOCX）をアップロード
+index.html にアクセスします。
 
-最大 20 MB
+左のメニューからファイルアップロードをクリックし、翻訳したいファイルをアップロード
+
+upload_file.php からファイル（TXT, PDF, DOCX）をアップロード ※ファイルサイズは最大 20 MB
 
 文字数を自動計算し、概算料金を表示
 
