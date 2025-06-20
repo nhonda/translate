@@ -27,8 +27,8 @@ PHP のビルトインサーバーで起動
 
 bash
 コピーする
-php -S localhost:8000
-http://localhost:8000/upload_file.php にアクセスします。
+php -S localhost
+http://localhost/upload_file.php にアクセスします。
 
 使い方
 upload_file.php からファイル（TXT, PDF, DOCX）をアップロード
