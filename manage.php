@@ -47,6 +47,7 @@ function cost_jpy(int $c): int {
 </style>
 </head>
 <body>
+<?php include 'includes/spinner.php'; ?>
 
 <header>
   <h1>アップロード済みファイル一覧</h1>
@@ -95,7 +96,7 @@ function cost_jpy(int $c): int {
           <td>
             <div class="inline-form-wrap">
               <!-- 翻訳再実行form -->
-              <form method="post" action="translate.php">
+              <form method="post" action="translate.php" onsubmit="showSpinner()">
                 <input type="hidden" name="filename" value="<?= htmlspecialchars($f) ?>">
                 <select name="out_fmt">
                   <option value="pdf">PDF</option>
@@ -119,5 +120,6 @@ function cost_jpy(int $c): int {
 </main>
 
 <footer>&copy; 2025 翻訳ツール</footer>
+<script src="spinner.js"></script>
 </body>
 </html>
