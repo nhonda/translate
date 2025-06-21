@@ -1,102 +1,87 @@
-DeepL Translation API Program
+# DeepL Translation API Program
 DeepL Translation Tool (PHP)
 
-必要条件
-PHP 8.x
+## 必要条件
 
-Composer
+- **PHP 8.x**
+- **Composer**
+- **php-zip**（DOCX出力に必須。例: `sudo apt install php8.2-zip`）
+- 以下の Composer パッケージ  
+    - [`vlucas/phpdotenv`](https://github.com/vlucas/phpdotenv)  
+    - [`mpdf/mpdf`](https://github.com/mpdf/mpdf)  
+    - [`phpoffice/phpword`](https://github.com/PHPOffice/PHPWord)  
+    - [`smalot/pdfparser`](https://github.com/smalot/pdfparser)
 
-php-zip（DOCX出力に必須。apt install php8.2-zip などで有効化）
+## セットアップ
 
-以下の Composer パッケージ
+1. **Composerパッケージのインストール**
 
-vlucas/phpdotenv
+    ```bash
+    composer require vlucas/phpdotenv mpdf/mpdf phpoffice/phpword smalot/pdfparser
+    ```
 
-mpdf/mpdf
+2. **php-zip拡張のインストール・有効化**
 
-phpoffice/phpword
+    例（PHP 8.2の場合）:
 
-smalot/pdfparser
+    ```bash
+    sudo apt install php8.2-zip
+    sudo systemctl restart apache2
+    ```
 
-セットアップ
-Composerパッケージのインストール
+    `php -m | grep zip` で `zip` が表示されればOKです。
 
-sh
-コピーする
-編集する
-composer require vlucas/phpdotenv mpdf/mpdf phpoffice/phpword smalot/pdfparser
-php-zip拡張のインストール・有効化（DOCX出力に必須）
+3. **.envファイルの作成とAPIキー設定**
 
-例（PHP 8.2の場合）:
+    プロジェクトルート直下に`.env`ファイルを作成し、下記のように記述します（実際のAPIキーに書き換えてください）。
 
-sh
-コピーする
-編集する
-sudo apt install php8.2-zip
-sudo systemctl restart apache2
-php -m | grep zip で「zip」と表示されればOK
+    ```
+    DEEPL_AUTH_KEY=xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxxxx
+    ```
 
-.envファイルの作成とAPIキー設定
+4. **.envファイルのセキュリティ対策**
 
-プロジェクトルート直下に.envファイルを作成し、下記のように記述します（実際のキーに書き換えてください）。
+    `.env` ファイルはWebからのアクセスを禁止してください。  
+    プロジェクトルート直下に**.htaccess**を作成し、以下の内容を記載します。
 
-ini
-コピーする
-編集する
-DEEPL_AUTH_KEY=xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxxxx
-.envファイルのセキュリティ対策
+    ```apache
+    <FilesMatch "^\.env">
+      Require all denied
+    </FilesMatch>
+    ```
 
-.env ファイルはWebからのアクセスを禁止してください。
-プロジェクトルート直下に**.htaccess**を作成し、下記のように記述します：
+    `.env` のパーミッションは `-r--------`（所有者のみ読み取り可）としてください。
 
-php-template
-コピーする
-編集する
-<FilesMatch "^\.env">
-  Require all denied
-</FilesMatch>
-.env のパーミッションは -r--------（所有者のみ読み取り可）としてください。
+5. **フォントの配置（日本語PDF出力用）**
 
-フォントの配置（日本語PDF出力用）
+    - `fonts` ディレクトリを作成し、`ipaexg.ttf` など日本語対応TrueTypeフォントを配置してください。
 
-fonts ディレクトリを作成し、ipaexg.ttf など日本語対応TrueTypeフォントを配置してください。
+## 使い方
 
-使い方
-index.htmlにアクセス
+1. `index.html` にアクセス
+2. 左のメニューから「ファイルアップロード」をクリックし、翻訳したいファイルをアップロード
+3. `upload_file.php` からファイル（**TXT, PDF, DOCX**）をアップロード（最大 20 MB）
+4. 文字数を自動計算し、**概算料金**を表示
+5. 出力形式を **PDF か DOCX** から選択し、`translate.php` が DeepL API で翻訳  
+    - `.txt` は「PDF」または「DOCX」どちらも選択可能  
+    - `.pdf` アップロード時は**仕様上「PDF出力のみ」**（DeepL APIの制約）
+6. 完成したファイルは `downloads.php` でダウンロード可能
+7. `manage.php` ではアップロード済みファイルの**削除や再翻訳**が可能
+8. アップロード履歴は `logs/history.csv` に記録
 
-左のメニューから**「ファイルアップロード」**をクリックし、翻訳したいファイルをアップロード
+## ディレクトリ構成
 
-upload_file.php からファイル（TXT, PDF, DOCX）をアップロード（最大 20 MB）
+- `uploads/` : アップロードされた元ファイル
+- `downloads/` : 翻訳後に保存されるファイル
+- `logs/history.csv` : ファイル名・文字数・アップロード日時を記録
 
-文字数を自動計算し、概算料金を表示
+## 注意事項
 
-出力形式を PDF か DOCX から選択し、translate.php が DeepL API で翻訳
+- **DeepL APIでは PDF, DOCX, XLSX の翻訳は1回につき最低50,000文字分がカウントされます。**  
+  テストにはできるだけ `.txt` ファイルを使うことを推奨します。
+- **PDFファイルをアップロードした場合、出力形式はPDFのみ選択可能**です（DeepL APIの仕様です）。
+- `.env` ファイルの**Webアクセス遮断とパーミッション制御**を必ず行ってください。
 
-.txt は「PDF」または「DOCX」で翻訳出力が可能
+## その他
 
-.pdf アップロード時は仕様上「PDF出力のみ」
-
-完成したファイルは downloads.php でダウンロード可能
-
-manage.php ではアップロード済みファイルの削除や再翻訳が可能
-
-アップロード履歴は logs/history.csv に記録
-
-ディレクトリ構成
-uploads/ : アップロードされた元ファイル
-
-downloads/ : 翻訳後に保存されるファイル
-
-logs/history.csv : ファイル名・文字数・アップロード日時を記録
-
-注意事項
-DeepL APIでは PDF, DOCX, XLSXの翻訳は1回につき最低50,000文字分がカウントされます。
-
-テストにはできるだけ .txt ファイルを使うことを推奨します。
-
-PDFファイルをアップロードした場合、出力形式はPDFのみ選択可能です（DeepLの仕様です）。
-
-.env ファイルのWebアクセス遮断とパーミッション制御を徹底してください。
-
-その他
-システム要件や詳細なセキュリティ対策については必要に応じて追記してください。
+- システム要件や追加のセキュリティ対策については必要に応じてREADMEに追記してください。
