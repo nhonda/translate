@@ -96,8 +96,9 @@ function cost_jpy(int $c): int {
           <td>
             <div class="inline-form-wrap">
               <!-- 翻訳再実行form -->
-              <form method="post" action="translate.php" onsubmit="showSpinner()">
-                <input type="hidden" name="filename" value="<?= htmlspecialchars($f) ?>">
+              <form method="post" action="translate.php">
+                <input type="hidden" name="filename" value="<?= htmlspecialchars($f, ENT_QUOTES, 'UTF-8') ?>">
+
                 <select name="out_fmt">
                   <option value="pdf">PDF</option>
                   <option value="docx">DOCX</option>
@@ -106,7 +107,7 @@ function cost_jpy(int $c): int {
               </form>
               <!-- 削除form（ボタンで即時削除） -->
               <form method="post" onsubmit="return confirm('本当に削除しますか？');">
-                <input type="hidden" name="filename" value="<?= htmlspecialchars($f) ?>">
+                <input type="hidden" name="filename" value="<?= htmlspecialchars($f, ENT_QUOTES, 'UTF-8') ?>">
                 <button type="submit" name="delete" value="1" style="color:red;">削除</button>
               </form>
             </div>
