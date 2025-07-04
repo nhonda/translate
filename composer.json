@@ -1,0 +1,15 @@
+{
+    "name": "translate/webapp",
+    "description": "Simple translation management web application",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "vlucas/phpdotenv": "^5.5",
+        "mpdf/mpdf": "^8.2",
+        "phpoffice/phpword": "^1.1",
+        "phpoffice/phpspreadsheet": "^1.29",
+        "smalot/pdfparser": "^0.16"
+    },
+    "minimum-stability": "stable",
+    "license": "MIT"
+}
