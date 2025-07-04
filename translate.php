@@ -172,7 +172,7 @@ if ($stat['status']!=='done') {
 /* ダウンロード */
 $tmp = tempnam($dlDir,'tmp_');
 $in  = fopen(
-    "https://api.deepl.com/v1/document/$id/result?auth_key=".DEEPL_KEY."&document_key=$key",
+    "https://api.deepl.com/v2/document/$id/result?auth_key=".DEEPL_KEY."&document_key=$key",
     'rb');
 if ($in === false) {
     error_log('Document-API result download failed');
