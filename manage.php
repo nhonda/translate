@@ -102,6 +102,7 @@ function cost_jpy(int $c): int {
                 <select name="out_fmt">
                   <option value="pdf">PDF</option>
                   <option value="docx">DOCX</option>
+                  <option value="xlsx">XLSX</option>
                 </select>
                 <button type="submit">翻訳再実行</button>
               </form>

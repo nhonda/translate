@@ -14,8 +14,8 @@ define('DEEPL_KEY', $_ENV['DEEPL_AUTH_KEY'] ?? '');
 
 /* パラメータ取得 */
 $filename = $_POST['filename'] ?? '';
-$fmt      = $_POST['out_fmt']  ?? '';             // pdf | docx
-if (!in_array($fmt, ['pdf','docx'], true)) die('不正な形式');
+$fmt      = $_POST['out_fmt']  ?? '';             // pdf | docx | xlsx
+if (!in_array($fmt, ['pdf','docx','xlsx'], true)) die('不正な形式');
 
 $src = __DIR__ . '/uploads/' . basename($filename);
 if (!is_file($src)) die('元ファイルが見つかりません');
@@ -92,11 +92,15 @@ if ($ext === 'txt') {
 }
 
 /*====================================================================
-  B) .pdf / .docx  →  DeepL Document-API
+  B) .pdf / .docx / .xlsx  →  DeepL Document-API
 ====================================================================*/
 // DeepL API: PDFアップロード時はPDFしか出力不可
-if ($ext === 'pdf' && $fmt === 'docx') {
-    die('DeepL API仕様上、PDF→Word形式はサポートされていません。PDFでのみ出力可能です。');
+if ($ext === 'pdf' && $fmt !== 'pdf') {
+    die('DeepL API仕様上、PDF→他形式はサポートされていません。PDFでのみ出力可能です。');
+}
+// DeepL API: XLSXアップロード時はXLSXしか出力不可
+if ($ext === 'xlsx' && $fmt !== 'xlsx') {
+    die('DeepL API仕様上、XLSX→他形式はサポートされていません。XLSXでのみ出力可能です。');
 }
 
 $up = curl_init('https://api.deepl.com/v2/document');
@@ -146,6 +150,7 @@ fclose($in); fclose($out);
 // ファイル名拡張子
 $actual_ext = $fmt;
 if ($ext === 'pdf') $actual_ext = 'pdf';
+if ($ext === 'xlsx') $actual_ext = 'xlsx';
 if ($ext === 'docx') $actual_ext = $fmt;
 
 $save = $base . '_jp.' . $actual_ext;
