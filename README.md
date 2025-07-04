@@ -9,7 +9,8 @@ DeepL Translation Tool (PHP)
 - 以下の Composer パッケージ  
     - [`vlucas/phpdotenv`](https://github.com/vlucas/phpdotenv)  
     - [`mpdf/mpdf`](https://github.com/mpdf/mpdf)  
-    - [`phpoffice/phpword`](https://github.com/PHPOffice/PHPWord)  
+    - [`phpoffice/phpword`](https://github.com/PHPOffice/PHPWord)
+    - [`phpoffice/phpspreadsheet`](https://github.com/PHPOffice/PhpSpreadsheet)
     - [`smalot/pdfparser`](https://github.com/smalot/pdfparser)
 
 ## セットアップ
@@ -17,7 +18,7 @@ DeepL Translation Tool (PHP)
 1. **Composerパッケージのインストール**
 
     ```bash
-    composer require vlucas/phpdotenv mpdf/mpdf phpoffice/phpword smalot/pdfparser
+    composer require vlucas/phpdotenv mpdf/mpdf phpoffice/phpword phpoffice/phpspreadsheet smalot/pdfparser
     ```
 
 2. **php-zip拡張のインストール・有効化**
@@ -60,11 +61,12 @@ DeepL Translation Tool (PHP)
 
 1. `index.html` にアクセス
 2. 左のメニューから「ファイルアップロード」をクリックし、翻訳したいファイルをアップロード
-3. `upload_file.php` からファイル（**TXT, PDF, DOCX**）をアップロード（最大 20 MB）
+3. `upload_file.php` からファイル（**TXT, PDF, DOCX, XLSX**）をアップロード（最大 20 MB）
 4. 文字数を自動計算し、**概算料金**を表示
-5. 出力形式を **PDF か DOCX** から選択し、`translate.php` が DeepL API で翻訳  
-    - `.txt` は「PDF」または「DOCX」どちらも選択可能  
+5. 出力形式を **PDF・DOCX・XLSX** から選択し、`translate.php` が DeepL API で翻訳
+    - `.txt` は「PDF」または「DOCX」どちらも選択可能
     - `.pdf` アップロード時は**仕様上「PDF出力のみ」**（DeepL APIの制約）
+    - `.xlsx` アップロード時は**仕様上「XLSX出力のみ」**
 6. 完成したファイルは `downloads.php` でダウンロード可能
 7. `manage.php` ではアップロード済みファイルの**削除や再翻訳**が可能
 8. アップロード履歴は `logs/history.csv` に記録
@@ -80,6 +82,7 @@ DeepL Translation Tool (PHP)
 - **DeepL APIでは PDF, DOCX, XLSX の翻訳は1回につき最低50,000文字分がカウントされます。**  
   テストにはできるだけ `.txt` ファイルを使うことを推奨します。
 - **PDFファイルをアップロードした場合、出力形式はPDFのみ選択可能**です（DeepL APIの仕様です）。
+- **XLSXファイルをアップロードした場合、出力形式はXLSXのみ選択可能**です。
 - `.env` ファイルの**Webアクセス遮断とパーミッション制御**を必ず行ってください。
 
 ## その他

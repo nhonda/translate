@@ -4,6 +4,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use Smalot\PdfParser\Parser as PdfParser;
 use PhpOffice\PhpWord\IOFactory as WordIO;
+use PhpOffice\PhpSpreadsheet\IOFactory as SheetIO;
 
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 const RATE_JPY_PER_MILLION = 2500;
@@ -24,6 +25,18 @@ function count_chars_local(string $p, string $e): int|false {
       foreach ($w->getSections() as $s) {
         foreach ($s->getElements() as $e) {
           if (method_exists($e, 'getText')) $t .= $e->getText();
+        }
+      }
+      return mb_strlen($t);
+    })($p),
+    'xlsx' => (function ($q) {
+      $s = SheetIO::load($q);
+      $t = '';
+      foreach ($s->getAllSheets() as $sh) {
+        foreach ($sh->toArray(null, true, true, true) as $row) {
+          foreach ($row as $cell) {
+            $t .= $cell;
+          }
         }
       }
       return mb_strlen($t);
@@ -121,6 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['stage'] ?? '') === 'upload
       <select name="out_fmt" required>
         <option value="pdf">PDF</option>
         <option value="docx">DOCX</option>
+        <option value="xlsx">XLSX</option>
       </select>
     </label>
     <button type="submit">翻訳実行</button>
