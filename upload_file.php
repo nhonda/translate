@@ -24,6 +24,7 @@ $rawChars = 0;
 $overhead = 0;
 $chargeableChars = 0;
 $costJpy = 0;
+$fmtOptions = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['file']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
@@ -50,6 +51,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
 
                 $step = 'confirm';
+                if ($ext === 'txt') {
+                    $fmtOptions = '<option value="pdf">PDF</option><option value="docx">DOCX</option>';
+                } elseif ($ext === 'pdf') {
+                    $fmtOptions = '<option value="pdf">PDF</option>';
+                } elseif ($ext === 'xlsx') {
+                    $fmtOptions = '<option value="xlsx">XLSX</option>';
+                } else {
+                    $fmtOptions = '<option value="pdf">PDF</option><option value="docx">DOCX</option><option value="xlsx">XLSX</option>';
+                }
             }
         }
     }
@@ -136,9 +146,7 @@ function count_chars_local(string $path, string $ext): int|false {
           <input type="hidden" name="filename" value="<?= htmlspecialchars($filename) ?>">
           <label for="out_fmt">変換形式：</label>
           <select name="out_fmt" id="out_fmt">
-            <option value="pdf">PDF</option>
-            <option value="docx">DOCX</option>
-            <option value="xlsx">XLSX</option>
+            <?= $fmtOptions ?>
           </select>
           <button type="submit">翻訳を開始</button>
         </form>

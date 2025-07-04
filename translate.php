@@ -39,6 +39,7 @@ if ($ext === 'txt') {
         $post = http_build_query([
             'auth_key'    => DEEPL_KEY,
             'text'        => $c,
+            'source_lang' => 'EN',
             'target_lang' => 'JA',
         ]);
         $ctx = stream_context_create(['http'=>[
@@ -46,9 +47,18 @@ if ($ext === 'txt') {
             'header'=>'Content-Type: application/x-www-form-urlencoded',
             'content'=>$post
         ]]);
-        $res = json_decode(file_get_contents(
-               'https://api.deepl.com/v2/translate', false, $ctx), true);
-        $translated .= $res['translations'][0]['text'] ?? '[翻訳失敗]';
+        $resStr = @file_get_contents(
+            'https://api.deepl.com/v2/translate', false, $ctx);
+        if ($resStr === false) {
+            error_log('Text-API request failed');
+            die('翻訳に失敗しました');
+        }
+        $res = json_decode($resStr, true);
+        if (!isset($res['translations'][0]['text'])) {
+            error_log('Text-API response error: ' . ($res['message'] ?? $resStr));
+            die('翻訳に失敗しました');
+        }
+        $translated .= $res['translations'][0]['text'];
     }
 
     /* PDF or DOCX で保存 */
@@ -104,12 +114,21 @@ if ($ext === 'xlsx' && $fmt !== 'xlsx') {
 }
 
 $up = curl_init('https://api.deepl.com/v2/document');
+$fileCurl = new CURLFile($src);
+if ($ext === 'xlsx') {
+    $fileCurl = curl_file_create(
+        $src,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        basename($src)
+    );
+}
 curl_setopt_array($up, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST           => true,
     CURLOPT_POSTFIELDS     => [
-        'file'          => new CURLFile($src),
+        'file'          => $fileCurl,
         'auth_key'      => DEEPL_KEY,
+        'source_lang'   => 'EN',
         'target_lang'   => 'JA',
         'output_format' => $fmt,
     ]
@@ -120,10 +139,14 @@ curl_close($up);
 
 if ($code !== 200) {
     error_log("Document-API upload ERROR $code : $resp");
-    die('アップロード失敗');
+    die('翻訳に失敗しました');
 }
-$resp = json_decode($resp, true);
-[$id, $key] = [$resp['document_id'], $resp['document_key']];
+$respArr = json_decode($resp, true);
+if (!isset($respArr['document_id'], $respArr['document_key'])) {
+    error_log('Document-API upload error: ' . ($respArr['message'] ?? $resp));
+    die('翻訳に失敗しました');
+}
+[$id, $key] = [$respArr['document_id'], $respArr['document_key']];
 
 for ($i = 0; $i < 300; $i++) {
     sleep(4);
@@ -132,20 +155,33 @@ for ($i = 0; $i < 300; $i++) {
     );
     $stat = json_decode($resp, true);
     if (!is_array($stat) || !isset($stat['status'])) {
-        die('翻訳エラー: API応答が不正です');
+        error_log('Document-API status parse error: ' . $resp);
+        die('翻訳に失敗しました');
     }
     if ($stat['status'] === 'done') break;
-    if ($stat['status'] === 'error') die('翻訳エラー: ' . $stat['message']);
+    if ($stat['status'] === 'error') {
+        error_log('Document-API status error: ' . ($stat['message'] ?? 'unknown'));
+        die('翻訳に失敗しました');
+    }
 }
-if ($stat['status']!=='done') die('タイムアウト');
+if ($stat['status']!=='done') {
+    error_log('Document-API timeout');
+    die('翻訳に失敗しました');
+}
 
 /* ダウンロード */
 $tmp = tempnam($dlDir,'tmp_');
 $in  = fopen(
-    "https://api.deepl.com/v2/document/$id/result?auth_key=".DEEPL_KEY."&document_key=$key",
+    "https://api.deepl.com/v1/document/$id/result?auth_key=".DEEPL_KEY."&document_key=$key",
     'rb');
-$out = fopen($tmp,'wb'); stream_copy_to_stream($in,$out);
-fclose($in); fclose($out);
+if ($in === false) {
+    error_log('Document-API result download failed');
+    die('翻訳に失敗しました');
+}
+$out = fopen($tmp,'wb');
+stream_copy_to_stream($in,$out);
+fclose($in);
+fclose($out);
 
 // ファイル名拡張子
 $actual_ext = $fmt;
