@@ -19,6 +19,7 @@ if (!is_dir($logDir))     mkdir($logDir, 0777, true);
 $step = 'upload';
 $message = '';
 $filename = '';
+$ext = '';
 $rawChars = 0;
 $overhead = 0;
 $chargeableChars = 0;
@@ -133,6 +134,12 @@ function count_chars_local(string $path, string $ext): int|false {
         <p>概算コスト：￥<?= number_format($costJpy) ?></p>
         <form action="translate.php" method="post">
           <input type="hidden" name="filename" value="<?= htmlspecialchars($filename) ?>">
+          <label for="out_fmt">変換形式：</label>
+          <select name="out_fmt" id="out_fmt">
+            <option value="pdf">PDF</option>
+            <option value="docx">DOCX</option>
+            <option value="xlsx">XLSX</option>
+          </select>
           <button type="submit">翻訳を開始</button>
         </form>
       <?php endif; ?>
