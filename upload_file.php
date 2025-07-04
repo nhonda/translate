@@ -92,6 +92,8 @@ function count_chars_local(string $path, string $ext): int|false {
     aside { float: left; width: 200px; }
     main { margin-left: 220px; }
     .error { color: red; }
+    .file-input-wrapper { margin-bottom: 10px; }
+    #selectedFileName { margin: 6px 0; color: #333; }
   </style>
 </head>
 <body>
@@ -113,8 +115,14 @@ function count_chars_local(string $path, string $ext): int|false {
       <?php if ($step === 'upload'): ?>
         <?php if ($message): ?><p class="error"><?= htmlspecialchars($message) ?></p><?php endif; ?>
         <form method="post" enctype="multipart/form-data">
-          <input type="file" name="file" required>
-          <button type="submit">アップロード</button>
+          <div class="file-input-wrapper">
+            <input type="file" name="file" id="fileInput" style="display:none;" required>
+            <button type="button" onclick="document.getElementById('fileInput').click();">参照</button>
+          </div>
+          <div id="selectedFileName">ファイルが選択されていません。</div>
+          <div class="file-input-wrapper">
+            <button type="submit">アップロード</button>
+          </div>
         </form>
 
       <?php else: ?>
@@ -132,5 +140,12 @@ function count_chars_local(string $path, string $ext): int|false {
   </main>
 
   <footer>&copy; 2025 翻訳ツール</footer>
+
+  <script>
+    document.getElementById('fileInput').addEventListener('change', function(){
+      const name = this.files.length ? this.files[0].name : 'ファイルが選択されていません。';
+      document.getElementById('selectedFileName').textContent = name;
+    });
+  </script>
 </body>
 </html>
