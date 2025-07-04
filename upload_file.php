@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/vendor/autoload.php';
 use Dotenv\Dotenv;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use Smalot\PdfParser\Parser;
 
 const RATE_JPY_PER_MILLION = 2500;
 
@@ -58,7 +60,7 @@ function count_chars_local(string $path, string $ext): int|false {
     if ($ext === 'txt') {
         $text = file_get_contents($path);
     } elseif ($ext === 'pdf') {
-        $parser = new Smalot\PdfParser\Parser();
+        $parser = new Parser();
         $pdf = $parser->parseFile($path);
         $text = $pdf->getText();
     } elseif ($ext === 'docx') {
@@ -69,7 +71,7 @@ function count_chars_local(string $path, string $ext): int|false {
             $text = strip_tags($xml);
         }
     } elseif ($ext === 'xlsx') {
-        $spreadsheet = PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+        $spreadsheet = IOFactory::load($path);
         foreach ($spreadsheet->getAllSheets() as $sheet) {
             foreach ($sheet->toArray(null, true, true, true) as $row) {
                 $text .= implode("\t", $row) . "\n";
@@ -85,27 +87,50 @@ function count_chars_local(string $path, string $ext): int|false {
   <meta charset="UTF-8">
   <title>ファイルアップロード</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .card { padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    aside { float: left; width: 200px; }
+    main { margin-left: 220px; }
+    .error { color: red; }
+  </style>
 </head>
 <body>
-  <h1>ファイルアップロード</h1>
+  <header>
+    <h1>ファイル アップロード</h1>
+    <nav><a href="index.html">トップに戻る</a></nav>
+  </header>
 
-  <?php if ($step === 'upload'): ?>
-    <?php if ($message): ?><p style="color:red;"><?= htmlspecialchars($message) ?></p><?php endif; ?>
-    <form method="post" enctype="multipart/form-data">
-      <input type="file" name="file" required>
-      <button type="submit">アップロード</button>
-    </form>
+  <aside>
+    <ul>
+      <li><a href="upload_file.php">ファイル アップロード</a></li>
+      <li><a href="downloads.php">翻訳済みDL</a></li>
+      <li><a href="manage.php">ファイル管理</a></li>
+    </ul>
+  </aside>
 
-  <?php else: ?>
-    <h2>アップロード結果</h2>
-    <p>ファイル名: <?= htmlspecialchars($filename) ?></p>
-    <p>文字数：<?= number_format($rawChars) ?>字<?php if ($overhead > 0) echo ' + ' . number_format($overhead) . '字 (追加分)'; ?></p>
-    <p>文字数（課金字数）：<?= number_format($chargeableChars) ?>字</p>
-    <p>概算コスト：￥<?= number_format($costJpy) ?></p>
-    <form action="translate.php" method="post">
-      <input type="hidden" name="filename" value="<?= htmlspecialchars($filename) ?>">
-      <button type="submit">翻訳を開始</button>
-    </form>
-  <?php endif; ?>
+  <main>
+    <div class="card">
+      <?php if ($step === 'upload'): ?>
+        <?php if ($message): ?><p class="error"><?= htmlspecialchars($message) ?></p><?php endif; ?>
+        <form method="post" enctype="multipart/form-data">
+          <input type="file" name="file" required>
+          <button type="submit">アップロード</button>
+        </form>
+
+      <?php else: ?>
+        <h2>アップロード結果</h2>
+        <p>ファイル名: <?= htmlspecialchars($filename) ?></p>
+        <p>文字数：<?= number_format($rawChars) ?>字<?php if ($overhead > 0) echo ' + ' . number_format($overhead) . '字 (追加分)'; ?></p>
+        <p>文字数（課金字数）：<?= number_format($chargeableChars) ?>字</p>
+        <p>概算コスト：￥<?= number_format($costJpy) ?></p>
+        <form action="translate.php" method="post">
+          <input type="hidden" name="filename" value="<?= htmlspecialchars($filename) ?>">
+          <button type="submit">翻訳を開始</button>
+        </form>
+      <?php endif; ?>
+    </div>
+  </main>
+
+  <footer>&copy; 2025 翻訳ツール</footer>
 </body>
 </html>
