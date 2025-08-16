@@ -13,8 +13,16 @@ if (file_exists(__DIR__.'/.env')) {
 
 $uploadsDir = __DIR__ . '/uploads';
 $logDir     = __DIR__ . '/logs';
-if (!is_dir($uploadsDir)) mkdir($uploadsDir, 0777, true);
-if (!is_dir($logDir))     mkdir($logDir, 0777, true);
+if (!is_dir($uploadsDir) && !mkdir($uploadsDir, 0777, true)) {
+    error_log("Failed to create uploads directory: $uploadsDir");
+    http_response_code(500);
+    die('アップロードディレクトリの作成に失敗しました');
+}
+if (!is_dir($logDir) && !mkdir($logDir, 0777, true)) {
+    error_log("Failed to create log directory: $logDir");
+    http_response_code(500);
+    die('ログディレクトリの作成に失敗しました');
+}
 
 $step = 'upload';
 $message = '';
@@ -36,19 +44,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!move_uploaded_file($_FILES['file']['tmp_name'], $dest)) {
             $message = 'ファイルの保存に失敗しました';
         } else {
-            $rawChars = count_chars_local($dest, $ext);
-            if ($rawChars === false) {
+            $allowed = ['txt','pdf','docx','xlsx'];
+            if (!in_array($ext, $allowed, true)) {
+                unlink($dest);
                 $message = '非対応形式';
             } else {
+                $rawChars = count_chars_local($dest, $ext);
+                if ($rawChars === false) {
+                    error_log("Failed to read uploaded file: $dest");
+                    unlink($dest);
+                    http_response_code(500);
+                    die('ファイルの読み込みに失敗しました');
+                }
                 $overhead = ($ext === 'txt') ? 0 : 50000;
                 $chargeableChars = $rawChars + $overhead;
                 $costJpy = round($chargeableChars / 1_000_000 * RATE_JPY_PER_MILLION);
 
-                file_put_contents(
+                if (file_put_contents(
                     "$logDir/history.csv",
                     sprintf("%s,%d,%d\n", $filename, $chargeableChars, time()),
                     FILE_APPEND
-                );
+                ) === false) {
+                    error_log('Failed to write history log');
+                    unlink($dest);
+                    http_response_code(500);
+                    die('ログ書き込みに失敗しました');
+                }
 
                 $step = 'confirm';
                 if ($ext === 'txt') {
@@ -70,6 +91,10 @@ function count_chars_local(string $path, string $ext): int|false {
     $text = '';
     if ($ext === 'txt') {
         $text = file_get_contents($path);
+        if ($text === false) {
+            error_log("Failed to read text file: $path");
+            return false;
+        }
     } elseif ($ext === 'pdf') {
         $parser = new Parser();
         $pdf = $parser->parseFile($path);
