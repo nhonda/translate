@@ -23,7 +23,7 @@ if (!is_file($src)) die('元ファイルが見つかりません');
 $ext    = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 $base   = pathinfo($filename, PATHINFO_FILENAME);
 $dlDir  = __DIR__ . '/downloads';
-if (!is_dir($dlDir)) mkdir($dlDir, 0777, true);
+if (!is_dir($dlDir)) mkdir($dlDir, 0755, true);
 
 /*====================================================================
   A) .txt  →  DeepL Text-API  →  PDFまたはDOCX
