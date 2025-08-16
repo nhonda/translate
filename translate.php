@@ -23,13 +23,22 @@ if (!is_file($src)) die('元ファイルが見つかりません');
 $ext    = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 $base   = pathinfo($filename, PATHINFO_FILENAME);
 $dlDir  = __DIR__ . '/downloads';
-if (!is_dir($dlDir)) mkdir($dlDir, 0755, true);
+if (!is_dir($dlDir) && !mkdir($dlDir, 0755, true)) {
+    error_log("Failed to create download directory: $dlDir");
+    http_response_code(500);
+    die('ダウンロードディレクトリの作成に失敗しました');
+}
 
 /*====================================================================
   A) .txt  →  DeepL Text-API  →  PDFまたはDOCX
 ====================================================================*/
 if ($ext === 'txt') {
     $plain = file_get_contents($src);
+    if ($plain === false) {
+        error_log("Failed to read source file: $src");
+        http_response_code(500);
+        die('元ファイルの読み込みに失敗しました');
+    }
     if (trim($plain) === '') die('翻訳対象が空です');
 
     // DeepL Text-API (4500字ごと)
@@ -47,10 +56,11 @@ if ($ext === 'txt') {
             'header'=>'Content-Type: application/x-www-form-urlencoded',
             'content'=>$post
         ]]);
-        $resStr = @file_get_contents(
+        $resStr = file_get_contents(
             'https://api.deepl.com/v2/translate', false, $ctx);
         if ($resStr === false) {
             error_log('Text-API request failed');
+            http_response_code(500);
             die('翻訳に失敗しました');
         }
         $res = json_decode($resStr, true);
@@ -153,19 +163,27 @@ for ($i = 0; $i < 300; $i++) {
     $resp = file_get_contents(
         "https://api.deepl.com/v2/document/$id?auth_key=" . DEEPL_KEY . "&document_key=$key"
     );
+    if ($resp === false) {
+        error_log('Document-API status request failed');
+        http_response_code(500);
+        die('翻訳に失敗しました');
+    }
     $stat = json_decode($resp, true);
     if (!is_array($stat) || !isset($stat['status'])) {
         error_log('Document-API status parse error: ' . $resp);
+        http_response_code(500);
         die('翻訳に失敗しました');
     }
     if ($stat['status'] === 'done') break;
     if ($stat['status'] === 'error') {
         error_log('Document-API status error: ' . ($stat['message'] ?? 'unknown'));
+        http_response_code(500);
         die('翻訳に失敗しました');
     }
 }
 if ($stat['status']!=='done') {
     error_log('Document-API timeout');
+    http_response_code(500);
     die('翻訳に失敗しました');
 }
 
