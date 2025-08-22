@@ -6,6 +6,7 @@ use Mpdf\Config\ConfigVariables;
 use Mpdf\Config\FontVariables;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\IOFactory;
+use PhpOffice\PhpSpreadsheet\IOFactory as SpreadsheetIOFactory;
 
 /* DeepL APIキー読み込み */
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
@@ -112,26 +113,64 @@ if ($ext === 'txt') {
 }
 
 /*====================================================================
-  B) .pdf / .docx / .xlsx  →  DeepL Document-API
+  B) .xlsx  →  DeepL Text-API
+====================================================================*/
+if ($ext === 'xlsx') {
+    if ($fmt !== 'xlsx') {
+        die('DeepL API仕様上、XLSX→他形式はサポートされていません。XLSXでのみ出力可能です。');
+    }
+    $spreadsheet = SpreadsheetIOFactory::load($src);
+    foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
+        foreach ($sheet->getRowIterator() as $row) {
+            $cellIterator = $row->getCellIterator();
+            $cellIterator->setIterateOnlyExistingCells(false);
+            foreach ($cellIterator as $cell) {
+                $val = $cell->getValue();
+                if (is_string($val) && trim($val) !== '') {
+                    $post = http_build_query([
+                        'auth_key'    => DEEPL_KEY,
+                        'text'        => $val,
+                        'source_lang' => 'EN',
+                        'target_lang' => 'JA',
+                    ]);
+                    $ctx = stream_context_create(['http'=>[
+                        'method' => 'POST',
+                        'header' => 'Content-Type: application/x-www-form-urlencoded',
+                        'content'=> $post
+                    ]]);
+                    $resStr = file_get_contents('https://api.deepl.com/v2/translate', false, $ctx);
+                    if ($resStr === false) {
+                        error_log('Text-API request failed');
+                        http_response_code(500);
+                        die('翻訳に失敗しました');
+                    }
+                    $res = json_decode($resStr, true);
+                    if (!isset($res['translations'][0]['text'])) {
+                        error_log('Text-API response error: ' . ($res['message'] ?? $resStr));
+                        die('翻訳に失敗しました');
+                    }
+                    $cell->setValue($res['translations'][0]['text']);
+                }
+            }
+        }
+    }
+    $save = $base . '_jp.xlsx';
+    $writer = SpreadsheetIOFactory::createWriter($spreadsheet, 'Xlsx');
+    $writer->save($dlDir . '/' . $save);
+    header('Location: downloads.php?done=' . urlencode($save));
+    exit;
+}
+
+/*====================================================================
+  C) .pdf / .docx  →  DeepL Document-API
 ====================================================================*/
 // DeepL API: PDFアップロード時はPDFしか出力不可
 if ($ext === 'pdf' && $fmt !== 'pdf') {
     die('DeepL API仕様上、PDF→他形式はサポートされていません。PDFでのみ出力可能です。');
 }
-// DeepL API: XLSXアップロード時はXLSXしか出力不可
-if ($ext === 'xlsx' && $fmt !== 'xlsx') {
-    die('DeepL API仕様上、XLSX→他形式はサポートされていません。XLSXでのみ出力可能です。');
-}
 
 $up = curl_init('https://api.deepl.com/v2/document');
 $fileCurl = new CURLFile($src);
-if ($ext === 'xlsx') {
-    $fileCurl = curl_file_create(
-        $src,
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        basename($src)
-    );
-}
 curl_setopt_array($up, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST           => true,
@@ -204,7 +243,6 @@ fclose($out);
 // ファイル名拡張子
 $actual_ext = $fmt;
 if ($ext === 'pdf') $actual_ext = 'pdf';
-if ($ext === 'xlsx') $actual_ext = 'xlsx';
 if ($ext === 'docx') $actual_ext = $fmt;
 
 $save = $base . '_jp.' . $actual_ext;
