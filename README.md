@@ -87,7 +87,7 @@ DeepL Translation Tool (PHP)
 
 ## 長時間処理のタイムアウト対策
 
-翻訳処理に時間がかかる場合は、以下のように各コンポーネントのタイムアウト設定を調整してください。
+Excelの翻訳処理に時間がかかる場合は、以下のように各コンポーネントのタイムアウト設定を調整してください。
 
 - **Apache**: `httpd.conf` または vhost 設定で `ProxyTimeout` を十分に大きく設定。
 - **PHP-FPM**: `php-fpm.conf` の `request_terminate_timeout` を延長。
