@@ -85,6 +85,14 @@ DeepL Translation Tool (PHP)
 - **XLSXファイルをアップロードした場合、出力形式はXLSXのみ選択可能**です。
 - `.env` ファイルの**Webアクセス遮断とパーミッション制御**を必ず行ってください。
 
+## 長時間処理のタイムアウト対策
+
+翻訳処理に時間がかかる場合は、以下のように各コンポーネントのタイムアウト設定を調整してください。
+
+- **Apache**: `httpd.conf` または vhost 設定で `ProxyTimeout` を十分に大きく設定。
+- **PHP-FPM**: `php-fpm.conf` の `request_terminate_timeout` を延長。
+- **PHP**: `php.ini` の `max_execution_time` を延長、または翻訳処理を CLI スクリプトとして実行し、`cron` やキューで非同期に処理して Web リクエストから切り離す。
+
 ## その他
 
 - このプログラムを利用する際は自己責任でお願いいたします。
