@@ -119,38 +119,85 @@ if ($ext === 'xlsx') {
     if ($fmt !== 'xlsx') {
         die('DeepL API仕様上、XLSX→他形式はサポートされていません。XLSXでのみ出力可能です。');
     }
+    // DeepL Text API helper: send array of texts with exponential backoff retry
+    $deepl = function(array $texts) {
+        if (empty($texts)) return [];
+        $query = http_build_query([
+            'auth_key'    => DEEPL_KEY,
+            'source_lang' => 'EN',
+            'target_lang' => 'JA',
+        ], '', '&', PHP_QUERY_RFC3986);
+        foreach ($texts as $t) {
+            $query .= '&text=' . urlencode($t);
+        }
+        $delay = 1;
+        for ($i = 0; $i < 5; $i++) {
+            $ch = curl_init('https://api.deepl.com/v2/translate');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => $query,
+            ]);
+            $resStr = curl_exec($ch);
+            $code   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+            if ($resStr !== false && $code === 200) {
+                $res = json_decode($resStr, true);
+                if (isset($res['translations']) && count($res['translations']) === count($texts)) {
+                    return array_column($res['translations'], 'text');
+                }
+                error_log('Text-API response error: ' . ($res['message'] ?? $resStr));
+                break;
+            }
+            if (!in_array($code, [429, 503], true)) break;
+            sleep($delay);
+            $delay *= 2;
+        }
+        http_response_code(500);
+        die('翻訳に失敗しました');
+    };
+
     $spreadsheet = SpreadsheetIOFactory::load($src);
     foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
+        $batchCells = [];
+        $batchTexts = [];
+        $batchLen   = 0;
         foreach ($sheet->getRowIterator() as $row) {
             $cellIterator = $row->getCellIterator();
             $cellIterator->setIterateOnlyExistingCells(false);
             foreach ($cellIterator as $cell) {
                 $val = $cell->getValue();
                 if (is_string($val) && trim($val) !== '') {
-                    $post = http_build_query([
-                        'auth_key'    => DEEPL_KEY,
-                        'text'        => $val,
-                        'source_lang' => 'EN',
-                        'target_lang' => 'JA',
-                    ]);
-                    $ctx = stream_context_create(['http'=>[
-                        'method' => 'POST',
-                        'header' => 'Content-Type: application/x-www-form-urlencoded',
-                        'content'=> $post
-                    ]]);
-                    $resStr = file_get_contents('https://api.deepl.com/v2/translate', false, $ctx);
-                    if ($resStr === false) {
-                        error_log('Text-API request failed');
-                        http_response_code(500);
-                        die('翻訳に失敗しました');
+                    $len = mb_strlen($val, 'UTF-8');
+                    if ($batchCells && $batchLen + $len > 30000) {
+                        $translated = $deepl($batchTexts);
+                        foreach ($batchCells as $idx => $c) {
+                            $c->setValue($translated[$idx]);
+                        }
+                        $batchCells = [];
+                        $batchTexts = [];
+                        $batchLen   = 0;
                     }
-                    $res = json_decode($resStr, true);
-                    if (!isset($res['translations'][0]['text'])) {
-                        error_log('Text-API response error: ' . ($res['message'] ?? $resStr));
-                        die('翻訳に失敗しました');
+                    $batchCells[] = $cell;
+                    $batchTexts[] = $val;
+                    $batchLen    += $len;
+                } else {
+                    if ($batchCells) {
+                        $translated = $deepl($batchTexts);
+                        foreach ($batchCells as $idx => $c) {
+                            $c->setValue($translated[$idx]);
+                        }
+                        $batchCells = [];
+                        $batchTexts = [];
+                        $batchLen   = 0;
                     }
-                    $cell->setValue($res['translations'][0]['text']);
                 }
+            }
+        }
+        if ($batchCells) {
+            $translated = $deepl($batchTexts);
+            foreach ($batchCells as $idx => $c) {
+                $c->setValue($translated[$idx]);
             }
         }
     }
