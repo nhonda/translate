@@ -75,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($ext === 'txt') {
                     $fmtOptions = '<option value="pdf">PDF</option><option value="docx">DOCX</option>';
                 } elseif ($ext === 'pdf') {
-                    $fmtOptions = '<option value="pdf">PDF</option>';
+                    $fmtOptions = '<option value="pdf">PDF</option><option value="docx">DOCX</option>';
                 } elseif ($ext === 'xlsx') {
                     $fmtOptions = '<option value="xlsx">XLSX</option>';
                 } else {

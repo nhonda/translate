@@ -211,9 +211,9 @@ if ($ext === 'xlsx') {
 /*====================================================================
   C) .pdf / .docx  →  DeepL Document-API
 ====================================================================*/
-// DeepL API: PDFアップロード時はPDFしか出力不可
-if ($ext === 'pdf' && $fmt !== 'pdf') {
-    die('DeepL API仕様上、PDF→他形式はサポートされていません。PDFでのみ出力可能です。');
+// DeepL API: PDFアップロード時はPDFまたはDOCXが出力可能
+if ($ext === 'pdf' && $fmt === 'xlsx') {
+    die('DeepL API仕様上、PDF→XLSXはサポートされていません。');
 }
 
 $up = curl_init('https://api.deepl.com/v2/document');
@@ -289,8 +289,6 @@ fclose($out);
 
 // ファイル名拡張子
 $actual_ext = $fmt;
-if ($ext === 'pdf') $actual_ext = 'pdf';
-if ($ext === 'docx') $actual_ext = $fmt;
 
 $save = $base . '_jp.' . $actual_ext;
 rename($tmp, "$dlDir/$save");
