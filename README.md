@@ -65,7 +65,7 @@ DeepL Translation Tool (PHP)
 4. 文字数を自動計算し、**概算料金**を表示
 5. 出力形式を **PDF・DOCX・XLSX** から選択し、`translate.php` が DeepL API で翻訳
     - `.txt` は「PDF」または「DOCX」どちらも選択可能
-    - `.pdf` アップロード時は**仕様上「PDF出力のみ」**（DeepL APIの制約）
+    - `.pdf` アップロード時は「PDF」または「DOCX」どちらも選択可能
     - `.xlsx` アップロード時は**仕様上「XLSX出力のみ」**
 6. 完成したファイルは `downloads.php` でダウンロード可能
 7. `manage.php` ではアップロード済みファイルの**削除や再翻訳**が可能
@@ -81,7 +81,7 @@ DeepL Translation Tool (PHP)
 
 - **DeepL APIでは PDF, DOCX, XLSX の翻訳は1回につき最低50,000文字分がカウントされます。**  
   テストにはできるだけ `.txt` ファイルを使うことを推奨します。
-- **PDFファイルをアップロードした場合、出力形式はPDFのみ選択可能**です（DeepL APIの仕様です）。
+- **PDFファイルをアップロードした場合、出力形式はPDFまたはDOCXを選択可能**です。
 - **XLSXファイルをアップロードした場合、出力形式はXLSXのみ選択可能**です。
 - `.env` ファイルの**Webアクセス遮断とパーミッション制御**を必ず行ってください。
 
