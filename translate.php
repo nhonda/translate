@@ -34,6 +34,9 @@ if (!is_dir($dlDir) && !mkdir($dlDir, 0755, true)) {
   A) .txt  →  DeepL Text-API  →  PDFまたはDOCX
 ====================================================================*/
 if ($ext === 'txt') {
+    if ($fmt === 'xlsx') {
+        die('TXT入力はPDFまたはDOCXのみ出力可能です。');
+    }
     $plain = file_get_contents($src);
     if ($plain === false) {
         error_log("Failed to read source file: $src");
@@ -93,7 +96,7 @@ if ($ext === 'txt') {
             'format'           => 'A4',
         ]);
         $html = '<pre style="font-family: ipaexg; font-size: 12px; white-space: pre-wrap;">'
-              . htmlspecialchars($translated) . '</pre>';
+              . htmlspecialchars($translated, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</pre>';
         $mpdf->WriteHTML($html);
         $save = $base . '_jp.pdf';
         $mpdf->Output($dlDir . '/' . $save, \Mpdf\Output\Destination::FILE);
@@ -139,7 +142,7 @@ if ($ext === 'xlsx') {
                 CURLOPT_POSTFIELDS     => $query,
             ]);
             $resStr = curl_exec($ch);
-            $code   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            $code   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
             if ($resStr !== false && $code === 200) {
                 $res = json_decode($resStr, true);
@@ -230,7 +233,7 @@ curl_setopt_array($up, [
     ]
 ]);
 $resp = curl_exec($up);
-$code = curl_getinfo($up, CURLINFO_RESPONSE_CODE);
+$code = curl_getinfo($up, CURLINFO_HTTP_CODE);
 curl_close($up);
 
 if ($code !== 200) {
