@@ -81,12 +81,16 @@ if (!in_array($sort, $allowedSorts, true)) {
     $sort = 'name';
 }
 
-usort($allFiles, function($a, $b) use ($sort, $uploadsDir) {
+usort($allFiles, function($a, $b) use ($sort, $uploadsDir, $history) {
     switch ($sort) {
         case 'mtime':
             return filemtime($uploadsDir . '/' . $b) <=> filemtime($uploadsDir . '/' . $a);
         case 'size':
-            return filesize($uploadsDir . '/' . $b) <=> filesize($uploadsDir . '/' . $a);
+            $sizeA = $history[$a] ?? null;
+            $sizeB = $history[$b] ?? null;
+            $sizeA = $sizeA !== null ? max(50000, $sizeA) : (int)filesize($uploadsDir . '/' . $a);
+            $sizeB = $sizeB !== null ? max(50000, $sizeB) : (int)filesize($uploadsDir . '/' . $b);
+            return $sizeB <=> $sizeA;
         case 'ext':
             return strcasecmp(pathinfo($a, PATHINFO_EXTENSION), pathinfo($b, PATHINFO_EXTENSION));
         default:
@@ -156,7 +160,7 @@ function cost_jpy(int $c): int {
   <?php if ($total === 0): ?>
     <p>アップロードされているファイルはありません。</p>
   <?php else: ?>
-    <div class="sort-links">ソート: <a href="?sort=name">名前</a> | <a href="?sort=mtime">更新日時</a> | <a href="?sort=size">サイズ</a> | <a href="?sort=ext">拡張子</a></div>
+      <div class="sort-links">ソート: <a href="?sort=name">名前</a> | <a href="?sort=mtime">更新日時</a> | <a href="?sort=size">文字数</a> | <a href="?sort=ext">拡張子</a></div>
     <table class="data-table">
       <thead>
         <tr>
