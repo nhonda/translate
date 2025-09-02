@@ -29,8 +29,6 @@ $message = '';
 $filename = '';
 $ext = '';
 $rawChars = 0;
-$overhead = 0;
-$chargeableChars = 0;
 $costJpy = 0;
 $fmtOptions = '';
 
@@ -56,13 +54,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     http_response_code(500);
                     die('ファイルの読み込みに失敗しました');
                 }
-                $overhead = ($ext === 'txt') ? 0 : 50000;
-                $chargeableChars = $rawChars + $overhead;
-                $costJpy = round($chargeableChars / 1_000_000 * RATE_JPY_PER_MILLION);
+                $costJpy = round(max(50000, $rawChars) / 1_000_000 * RATE_JPY_PER_MILLION);
 
                 if (file_put_contents(
                     "$logDir/history.csv",
-                    sprintf("%s,%d,%d\n", $filename, $chargeableChars, time()),
+                    sprintf("%s,%d,%d\n", $filename, $rawChars, time()),
                     FILE_APPEND
                 ) === false) {
                     error_log('Failed to write history log');
@@ -164,8 +160,7 @@ function count_chars_local(string $path, string $ext): int|false {
       <?php else: ?>
         <h2>アップロード結果</h2>
         <p>ファイル名: <?= htmlspecialchars($filename) ?></p>
-        <p>文字数：<?= number_format($rawChars) ?>字<?php if ($overhead > 0) echo ' + ' . number_format($overhead) . '字 (追加分)'; ?></p>
-        <p>文字数（課金字数）：<?= number_format($chargeableChars) ?>字</p>
+        <p>文字数：<?= number_format($rawChars) ?>字</p>
         <p>概算コスト：￥<?= number_format($costJpy) ?></p>
         <form action="translate.php" method="post">
           <input type="hidden" name="filename" value="<?= htmlspecialchars($filename) ?>">

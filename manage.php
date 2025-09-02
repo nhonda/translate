@@ -22,7 +22,7 @@ if (($h = fopen(__DIR__ . '/logs/history.csv', 'r'))) {
     fclose($h);
 }
 function cost_jpy(int $c): int {
-    return (int)round($c / 1_000_000 * RATE_JPY_PER_MILLION);
+    return (int)round(max(50000, $c) / 1_000_000 * RATE_JPY_PER_MILLION);
 }
 ?>
 <!doctype html>
