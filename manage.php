@@ -28,6 +28,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     unlink($translated);
                 }
             }
+            $historyFile = __DIR__ . '/logs/history.csv';
+            $rows = [];
+            if (file_exists($historyFile) && ($h = fopen($historyFile, 'r')) !== false) {
+                while (($row = fgetcsv($h)) !== false) {
+                    if (!isset($row[0]) || $row[0] !== $filename) {
+                        $rows[] = $row;
+                    }
+                }
+                fclose($h);
+            }
+            if (($h = fopen($historyFile, 'w')) !== false) {
+                foreach ($rows as $row) {
+                    if (fputcsv($h, $row) === false) {
+                        error_log('Failed to write history row for ' . $filename);
+                        break;
+                    }
+                }
+                fclose($h);
+            } else {
+                error_log('Failed to write history file: ' . $historyFile);
+            }
             header('Location: manage.php?deleted=1');
             exit;
         } else {
