@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once __DIR__ . '/includes/common.php';
 $dir = __DIR__ . '/downloads';
 $files = is_dir($dir) ? array_diff(scandir($dir), ['.', '..']) : [];
 
@@ -47,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <main>
   <div class="card">
   <?php if (isset($_GET['done'])): ?>
-    <p style="color:green;"><?= htmlspecialchars($_GET['done'], ENT_QUOTES, 'UTF-8') ?> を保存しました。</p>
+    <p style="color:green;"><?= h($_GET['done']) ?> を保存しました。</p>
   <?php endif; ?>
     <?php if (isset($_GET['deleted'])): ?>
       <p style="color:green;">選択したファイルを削除しました。</p>
@@ -57,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <p>まだ翻訳済みファイルがありません。</p>
     <?php else: ?>
       <form method="post">
-        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
         <table class="data-table">
           <thead>
             <tr>
@@ -69,10 +70,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <tbody>
           <?php foreach ($files as $f): ?>
             <tr>
-              <td><?= htmlspecialchars($f, ENT_QUOTES, 'UTF-8') ?></td>
-              <td><a href="downloads/<?= rawurlencode($f) ?>" download>ダウンロード</a></td>
+              <td><?= h($f) ?></td>
+              <td><a href="downloads/<?= h(rawurlencode($f)) ?>" download>ダウンロード</a></td>
               <td style="text-align:center">
-                <input type="checkbox" name="delete[]" value="<?= htmlspecialchars($f, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="checkbox" name="delete[]" value="<?= h($f) ?>">
               </td>
             </tr>
           <?php endforeach; ?>

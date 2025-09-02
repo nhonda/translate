@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/includes/common.php';
 use Dotenv\Dotenv;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Smalot\PdfParser\Parser;
@@ -145,7 +146,7 @@ function count_chars_local(string $path, string $ext): int|false {
   <main>
     <div class="card">
       <?php if ($step === 'upload'): ?>
-        <?php if ($message): ?><p class="error"><?= htmlspecialchars($message) ?></p><?php endif; ?>
+        <?php if ($message): ?><p class="error"><?= h($message) ?></p><?php endif; ?>
         <form method="post" enctype="multipart/form-data">
           <div class="file-input-wrapper">
             <input type="file" name="file" id="fileInput" style="display:none;" required>
@@ -159,14 +160,14 @@ function count_chars_local(string $path, string $ext): int|false {
 
       <?php else: ?>
         <h2>アップロード結果</h2>
-        <p>ファイル名: <?= htmlspecialchars($filename) ?></p>
-        <p>文字数：<?= number_format($rawChars) ?>字</p>
-        <p>概算コスト：￥<?= number_format($costJpy) ?></p>
+        <p>ファイル名: <?= h($filename) ?></p>
+        <p>文字数：<?= h(number_format($rawChars)) ?>字</p>
+        <p>概算コスト：￥<?= h(number_format($costJpy)) ?></p>
         <form action="translate.php" method="post">
-          <input type="hidden" name="filename" value="<?= htmlspecialchars($filename) ?>">
+          <input type="hidden" name="filename" value="<?= h($filename) ?>">
           <label for="out_fmt">変換形式：</label>
           <select name="out_fmt" id="out_fmt">
-            <?= $fmtOptions ?>
+            <?= $fmtOptions // pre-defined safe HTML ?>
           </select>
           <button type="submit">翻訳を開始</button>
         </form>
