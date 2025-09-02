@@ -59,7 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $history = [];
-$totalChars = 0;
+$totalChars = 0; // 50,000文字未満でも50,000文字としてカウントした合計
+$totalActualChars = 0; // 実際の文字数合計
 $totalCost = 0;
 if (($h = fopen(__DIR__ . '/logs/history.csv', 'r'))) {
     while (($row = fgetcsv($h)) !== false) {
@@ -67,7 +68,8 @@ if (($h = fopen(__DIR__ . '/logs/history.csv', 'r'))) {
         [$fn, $chars] = $row;
         $chars = (int)$chars;
         $history[$fn] = $chars;
-        $totalChars += $chars;
+        $totalActualChars += $chars;
+        $totalChars += max(50000, $chars);
         $totalCost += cost_jpy($chars);
     }
     fclose($h);
@@ -168,8 +170,17 @@ function cost_jpy(int $c): int {
       <?php foreach ($files as $f): ?>
         <?php
           $chars = $history[$f] ?? null;
-          $charDisp = $chars ? number_format($chars) : '未計測';
-          $costDisp = $chars ? '¥' . number_format(cost_jpy($chars)) : '未計測';
+          if ($chars !== null) {
+            $displayChars = max(50000, $chars);
+            $charDisp = number_format($displayChars);
+            if ($displayChars !== $chars) {
+              $charDisp .= ' (' . number_format($chars) . ')';
+            }
+            $costDisp = '¥' . number_format(cost_jpy($chars));
+          } else {
+            $charDisp = '未計測';
+            $costDisp = '未計測';
+          }
         ?>
         <tr>
           <td><?= h($f) ?></td>
@@ -198,9 +209,15 @@ function cost_jpy(int $c): int {
           </td>
         </tr>
       <?php endforeach; ?>
+      <?php
+        $summaryDisp = number_format($totalChars);
+        if ($totalChars !== $totalActualChars) {
+          $summaryDisp .= ' (' . number_format($totalActualChars) . ')';
+        }
+      ?>
       <tr class="summary-row">
         <td>合計</td>
-        <td><?= h(number_format($totalChars)) ?></td>
+        <td><?= h($summaryDisp) ?></td>
         <td><?= h('¥' . number_format($totalCost)) ?></td>
         <td></td>
       </tr>
