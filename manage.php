@@ -17,9 +17,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     // ファイル削除
     if (isset($_POST['delete']) && isset($_POST['filename'])) {
-        @unlink($uploadsDir . '/' . basename($_POST['filename']));
-        header('Location: manage.php?deleted=1');
-        exit;
+        $target = realpath($uploadsDir . '/' . $_POST['filename']);
+        if ($target !== false && strpos($target, $uploadsDir . DIRECTORY_SEPARATOR) === 0 && is_file($target)) {
+            unlink($target);
+            header('Location: manage.php?deleted=1');
+            exit;
+        } else {
+            error_log('Invalid delete path: ' . ($_POST['filename'] ?? ''));
+            http_response_code(400);
+            exit('Invalid file path');
+        }
     }
 }
 $history = [];

@@ -14,8 +14,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
   if (!empty($_POST['delete'])) {
     foreach ($_POST['delete'] as $f) {
-      $path = $dir . '/' . basename($f);
-      if (is_file($path)) unlink($path);
+      $target = realpath($dir . '/' . $f);
+      if ($target !== false && strpos($target, $dir . DIRECTORY_SEPARATOR) === 0 && is_file($target)) {
+        unlink($target);
+      } else {
+        error_log('Invalid delete path: ' . $f);
+      }
     }
     header('Location: downloads.php?deleted=1');
     exit;
