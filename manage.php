@@ -18,9 +18,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     // ファイル削除
     if (isset($_POST['delete']) && isset($_POST['filename'])) {
-        $target = realpath($uploadsDir . '/' . $_POST['filename']);
+        $filename = $_POST['filename'];
+        $target = realpath($uploadsDir . '/' . $filename);
         if ($target !== false && strpos($target, $uploadsDir . DIRECTORY_SEPARATOR) === 0 && is_file($target)) {
             unlink($target);
+            $base = pathinfo($filename, PATHINFO_FILENAME);
+            foreach (glob(__DIR__ . "/downloads/{$base}_jp.*") as $translated) {
+                if (is_file($translated)) {
+                    unlink($translated);
+                }
+            }
             header('Location: manage.php?deleted=1');
             exit;
         } else {
