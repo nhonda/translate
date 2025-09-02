@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/includes/common.php';
 const RATE_JPY_PER_MILLION = 2500;
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -104,17 +105,17 @@ function cost_jpy(int $c): int {
         <?php
           $chars = $history[$f] ?? null;
           $charDisp = $chars ? number_format($chars) : '未計測';
-          $costDisp = $chars ? '&yen;' . number_format(cost_jpy($chars)) : '未計測';
+          $costDisp = $chars ? '¥' . number_format(cost_jpy($chars)) : '未計測';
         ?>
         <tr>
-          <td><?= htmlspecialchars($f) ?></td>
-          <td><?= $charDisp ?></td>
-          <td><?= $costDisp ?></td>
+          <td><?= h($f) ?></td>
+          <td><?= h($charDisp) ?></td>
+          <td><?= h($costDisp) ?></td>
           <td>
             <div class="inline-form-wrap">
               <!-- 翻訳再実行form -->
               <form method="post" action="translate.php">
-                <input type="hidden" name="filename" value="<?= htmlspecialchars($f, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="filename" value="<?= h($f) ?>">
 
                 <select name="out_fmt">
                   <option value="pdf">PDF</option>
@@ -125,8 +126,8 @@ function cost_jpy(int $c): int {
               </form>
               <!-- 削除form（ボタンで即時削除） -->
               <form method="post" onsubmit="return confirm('本当に削除しますか？');">
-                <input type="hidden" name="filename" value="<?= htmlspecialchars($f, ENT_QUOTES, 'UTF-8') ?>">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="filename" value="<?= h($f) ?>">
+                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                 <button type="submit" name="delete" value="1" style="color:red;">削除</button>
               </form>
             </div>
