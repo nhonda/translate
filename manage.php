@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 $uploadsDir = __DIR__ . '/uploads';
-$files = is_dir($uploadsDir) ? array_diff(scandir($uploadsDir), ['.','..']) : [];
+$allFiles = is_dir($uploadsDir) ? array_values(array_diff(scandir($uploadsDir), ['.','..'])) : [];
 $deleted = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
@@ -49,6 +49,36 @@ if (($h = fopen(__DIR__ . '/logs/history.csv', 'r'))) {
     }
     fclose($h);
 }
+
+$sort = $_GET['sort'] ?? 'name';
+$allowedSorts = ['name', 'mtime', 'size', 'ext'];
+if (!in_array($sort, $allowedSorts, true)) {
+    $sort = 'name';
+}
+
+usort($allFiles, function($a, $b) use ($sort, $uploadsDir) {
+    switch ($sort) {
+        case 'mtime':
+            return filemtime($uploadsDir . '/' . $b) <=> filemtime($uploadsDir . '/' . $a);
+        case 'size':
+            return filesize($uploadsDir . '/' . $b) <=> filesize($uploadsDir . '/' . $a);
+        case 'ext':
+            return strcasecmp(pathinfo($a, PATHINFO_EXTENSION), pathinfo($b, PATHINFO_EXTENSION));
+        default:
+            return strcasecmp($a, $b);
+    }
+});
+
+$limit = 10;
+$page = max(1, (int)($_GET['page'] ?? 1));
+$total = count($allFiles);
+$totalPages = (int)ceil($total / $limit);
+if ($totalPages > 0 && $page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $limit;
+$files = array_slice($allFiles, $offset, $limit);
+
 function cost_jpy(int $c): int {
     return (int)round(max(50000, $c) / 1_000_000 * RATE_JPY_PER_MILLION);
 }
@@ -98,9 +128,10 @@ function cost_jpy(int $c): int {
     <p style="color:green;">選択したファイルを削除しました。</p>
   <?php endif; ?>
 
-  <?php if (empty($files)): ?>
+  <?php if ($total === 0): ?>
     <p>アップロードされているファイルはありません。</p>
   <?php else: ?>
+    <div class="sort-links">ソート: <a href="?sort=name">名前</a> | <a href="?sort=mtime">更新日時</a> | <a href="?sort=size">サイズ</a> | <a href="?sort=ext">拡張子</a></div>
     <table class="data-table">
       <thead>
         <tr>
@@ -152,6 +183,17 @@ function cost_jpy(int $c): int {
       </tr>
       </tbody>
     </table>
+    <?php if ($totalPages > 1): ?>
+      <div class="pagination">
+        <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+          <?php if ($i === $page): ?>
+            <strong><?= $i ?></strong>
+          <?php else: ?>
+            <a href="?sort=<?= h($sort) ?>&page=<?= $i ?>"><?= $i ?></a>
+          <?php endif; ?>
+        <?php endfor; ?>
+      </div>
+    <?php endif; ?>
   <?php endif; ?>
 </div>
 </main>
