@@ -38,11 +38,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $history = [];
+$totalChars = 0;
 if (($h = fopen(__DIR__ . '/logs/history.csv', 'r'))) {
     while (($row = fgetcsv($h)) !== false) {
         if (count($row) < 2) continue;
         [$fn, $chars] = $row;
-        $history[$fn] = (int)$chars;
+        $chars = (int)$chars;
+        $history[$fn] = $chars;
+        $totalChars += $chars;
     }
     fclose($h);
 }
@@ -141,6 +144,12 @@ function cost_jpy(int $c): int {
           </td>
         </tr>
       <?php endforeach; ?>
+      <tr class="summary-row">
+        <td>合計</td>
+        <td><?= h(number_format($totalChars)) ?></td>
+        <td><?= h('¥' . number_format(cost_jpy($totalChars))) ?></td>
+        <td></td>
+      </tr>
       </tbody>
     </table>
   <?php endif; ?>
