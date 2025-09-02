@@ -1,25 +1,43 @@
 <?php
 session_start();
 require_once __DIR__ . '/includes/common.php';
+const RATE_JPY_PER_MILLION = 2500;
 $dir = __DIR__ . '/downloads';
 $allFiles = is_dir($dir) ? array_values(array_diff(scandir($dir), ['.', '..'])) : [];
+
+$history = [];
+if (($h = fopen(__DIR__ . '/logs/history.csv', 'r'))) {
+  while (($row = fgetcsv($h)) !== false) {
+    if (count($row) < 2) continue;
+    [$fn, $chars] = $row;
+    $base = pathinfo($fn, PATHINFO_FILENAME);
+    $history[$base] = (int)$chars;
+  }
+  fclose($h);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
 $sort = $_GET['sort'] ?? 'name';
-$allowedSorts = ['name', 'mtime', 'size', 'ext'];
+$allowedSorts = ['name', 'mtime', 'chars', 'ext'];
 if (!in_array($sort, $allowedSorts, true)) {
   $sort = 'name';
 }
 
-usort($allFiles, function($a, $b) use ($sort, $dir) {
+usort($allFiles, function($a, $b) use ($sort, $dir, $history) {
   switch ($sort) {
     case 'mtime':
       return filemtime($dir . '/' . $b) <=> filemtime($dir . '/' . $a);
-    case 'size':
-      return filesize($dir . '/' . $b) <=> filesize($dir . '/' . $a);
+    case 'chars':
+      $baseA = preg_replace('/_jp$/', '', pathinfo($a, PATHINFO_FILENAME));
+      $baseB = preg_replace('/_jp$/', '', pathinfo($b, PATHINFO_FILENAME));
+      $charA = $history[$baseA] ?? null;
+      $charB = $history[$baseB] ?? null;
+      $charA = $charA !== null ? max(50000, $charA) : -1;
+      $charB = $charB !== null ? max(50000, $charB) : -1;
+      return $charB <=> $charA;
     case 'ext':
       return strcasecmp(pathinfo($a, PATHINFO_EXTENSION), pathinfo($b, PATHINFO_EXTENSION));
     default:
@@ -36,6 +54,10 @@ if ($totalPages > 0 && $page > $totalPages) {
 }
 $offset = ($page - 1) * $limit;
 $files = array_slice($allFiles, $offset, $limit);
+
+function cost_jpy(int $c): int {
+  return (int)round(max(50000, $c) / 1_000_000 * RATE_JPY_PER_MILLION);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
@@ -86,21 +108,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($total === 0): ?>
       <p>まだ翻訳済みファイルがありません。</p>
     <?php else: ?>
-      <div class="sort-links">ソート: <a href="?sort=name">名前</a> | <a href="?sort=mtime">更新日時</a> | <a href="?sort=size">サイズ</a> | <a href="?sort=ext">拡張子</a></div>
+      <div class="sort-links">ソート: <a href="?sort=name">名前</a> | <a href="?sort=mtime">更新日時</a> | <a href="?sort=chars">文字数</a> | <a href="?sort=ext">拡張子</a></div>
       <form method="post">
         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
         <table class="data-table">
           <thead>
             <tr>
               <th>ファイル名</th>
+              <th>文字数</th>
+              <th>概算コスト</th>
               <th>ダウンロード</th>
               <th>削除</th>
             </tr>
           </thead>
           <tbody>
           <?php foreach ($files as $f): ?>
+            <?php
+              $base = preg_replace('/_jp$/', '', pathinfo($f, PATHINFO_FILENAME));
+              $chars = $history[$base] ?? null;
+              if ($chars !== null) {
+                $displayChars = max(50000, $chars);
+                $charDisp = number_format($displayChars);
+                if ($displayChars !== $chars) {
+                  $charDisp .= ' (' . number_format($chars) . ')';
+                }
+                $costDisp = '¥' . number_format(cost_jpy($chars));
+              } else {
+                $charDisp = '未計測';
+                $costDisp = '未計測';
+              }
+            ?>
             <tr>
               <td><?= h($f) ?></td>
+              <td><?= h($charDisp) ?></td>
+              <td><?= h($costDisp) ?></td>
               <td><a href="downloads/<?= h(rawurlencode($f)) ?>" download>ダウンロード</a></td>
               <td style="text-align:center">
                 <input type="checkbox" name="delete[]" value="<?= h($f) ?>">
