@@ -1,10 +1,20 @@
 <?php
+session_start();
 require_once __DIR__ . '/vendor/autoload.php';
 const RATE_JPY_PER_MILLION = 2500;
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 $uploadsDir = __DIR__ . '/uploads';
 $files = is_dir($uploadsDir) ? array_diff(scandir($uploadsDir), ['.','..']) : [];
 $deleted = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+        http_response_code(400);
+        exit('Invalid CSRF token');
+    }
     // ファイル削除
     if (isset($_POST['delete']) && isset($_POST['filename'])) {
         @unlink($uploadsDir . '/' . basename($_POST['filename']));
@@ -109,6 +119,7 @@ function cost_jpy(int $c): int {
               <!-- 削除form（ボタンで即時削除） -->
               <form method="post" onsubmit="return confirm('本当に削除しますか？');">
                 <input type="hidden" name="filename" value="<?= htmlspecialchars($f, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 <button type="submit" name="delete" value="1" style="color:red;">削除</button>
               </form>
             </div>

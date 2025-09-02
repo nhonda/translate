@@ -1,14 +1,25 @@
 <?php
+session_start();
 $dir = __DIR__ . '/downloads';
 $files = is_dir($dir) ? array_diff(scandir($dir), ['.', '..']) : [];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['delete'])) {
-  foreach ($_POST['delete'] as $f) {
-    $path = $dir . '/' . basename($f);
-    if (is_file($path)) unlink($path);
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+  $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+    http_response_code(400);
+    exit('Invalid CSRF token');
   }
-  header('Location: downloads.php?deleted=1');
-  exit;
+  if (!empty($_POST['delete'])) {
+    foreach ($_POST['delete'] as $f) {
+      $path = $dir . '/' . basename($f);
+      if (is_file($path)) unlink($path);
+    }
+    header('Location: downloads.php?deleted=1');
+    exit;
+  }
 }
 ?>
 <!doctype html>
@@ -42,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['delete'])) {
       <p>まだ翻訳済みファイルがありません。</p>
     <?php else: ?>
       <form method="post">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
         <table class="data-table">
           <thead>
             <tr>
