@@ -18,11 +18,12 @@ if (file_exists(__DIR__ . '/.env')) {
 } else {
     $apiKey = getenv('DEEPL_AUTH_KEY') ?: '';
 }
-if ($apiKey === '') {
-    http_response_code(500);
-    die('DeepL APIキーが未設定です');
-}
 define('DEEPL_KEY', $apiKey);
+if (empty(DEEPL_KEY)) {
+    http_response_code(400);
+    echo 'DeepL APIキーが設定されていません';
+    exit;
+}
 
 /* パラメータ取得 */
 $filename = $_POST['filename'] ?? '';
