@@ -21,7 +21,8 @@ if ($apiKey === '' || $apiBase === '') {
 }
 
 $filename = $_POST['filename'] ?? '';
-$outputFormat = $_POST['output_format'] ?? '';
+$outputFormat = trim($_POST['output_format'] ?? '');
+$outputFormat = in_array($outputFormat, ['pdf', 'docx'], true) ? $outputFormat : '';
 $src = __DIR__ . '/uploads/' . basename($filename);
 if ($filename === '' || !is_file($src)) {
     http_response_code(400);
@@ -49,14 +50,18 @@ $updateProgress(10, 'ドキュメントを送信中');
 
 // Upload document
 $ch = curl_init($apiBase . '/document');
+$postFields = [
+    'file' => new CURLFile($src),
+    'target_lang' => 'JA',
+];
+if ($ext === 'pdf' && $outputFormat !== '') {
+    $postFields['output_format'] = $outputFormat;
+}
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST => true,
     CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
-    CURLOPT_POSTFIELDS => [
-        'file' => new CURLFile($src),
-        'target_lang' => 'JA',
-    ],
+    CURLOPT_POSTFIELDS => $postFields,
     CURLOPT_CONNECTTIMEOUT => 15,
     CURLOPT_TIMEOUT => 60,
 ]);
@@ -150,9 +155,7 @@ if (!is_dir($outDir) && !mkdir($outDir, 0777, true)) {
     echo '出力ディレクトリの作成に失敗しました';
     exit;
 }
-$outExt = ($ext === 'pdf')
-    ? (in_array($outputFormat, ['pdf', 'docx'], true) ? $outputFormat : 'pdf')
-    : 'docx';
+$outExt = ($outputFormat === 'docx') ? 'docx' : ($ext === 'doc' ? 'docx' : $ext);
 $outName = pathinfo($filename, PATHINFO_FILENAME) . '-ja.' . $outExt;
 $outPath = $outDir . '/' . $outName;
 if (file_put_contents($outPath, $fileData) === false) {
