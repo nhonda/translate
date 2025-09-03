@@ -14,6 +14,7 @@ $step = 'upload';
 $message = '';
 $filename = '';
 $ext = '';
+$outputFormat = $_POST['output_format'] ?? '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['file']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
@@ -90,6 +91,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p>ファイル名: <?= h($filename) ?></p>
         <form id="translateForm" action="translate.php" method="post">
           <input type="hidden" name="filename" value="<?= h($filename) ?>">
+          <label for="output_format">出力形式（PDFアップ時のみDOCX可）</label>
+          <select name="output_format" id="output_format">
+            <option value="" <?= $outputFormat === '' ? 'selected' : '' ?>></option>
+            <option value="pdf" <?= $outputFormat === 'pdf' ? 'selected' : '' ?>>pdf</option>
+            <option value="docx" <?= $outputFormat === 'docx' ? 'selected' : '' ?>>docx</option>
+          </select>
           <button type="submit">翻訳を開始</button>
         </form>
       <?php endif; ?>
