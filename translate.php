@@ -14,6 +14,8 @@ if (file_exists(__DIR__ . '/.env')) {
 }
 $apiKey  = $_ENV['DEEPL_API_KEY']  ?? getenv('DEEPL_API_KEY')  ?? '';
 $apiBase = rtrim($_ENV['DEEPL_API_BASE'] ?? getenv('DEEPL_API_BASE') ?? '', '/');
+$price   = (float)($_ENV['DEEPL_PRICE_PER_MILLION'] ?? getenv('DEEPL_PRICE_PER_MILLION') ?? 25);
+$priceCcy = $_ENV['DEEPL_PRICE_CCY'] ?? getenv('DEEPL_PRICE_CCY') ?? 'USD';
 if ($apiKey === '' || $apiBase === '') {
     http_response_code(500);
     echo 'DeepL API設定が不足しています';
@@ -87,6 +89,7 @@ if ($documentId === '' || $documentKey === '') {
 
 $updateProgress(30, '翻訳中');
 $billed = 0;
+$estCost = 0;
 while (true) {
     usleep(1500000);
     $ch = curl_init($apiBase . '/document/' . $documentId);
@@ -113,6 +116,11 @@ while (true) {
     $status = $info['status'] ?? '';
     if ($status === 'done') {
         $billed = (int)($info['billed_characters'] ?? 0);
+        if ($billed === 0 && in_array($ext, ['pdf','doc','docx','pptx','xlsx'], true)) {
+            $billed = 50000;
+            error_log('[DeepL] billed_characters missing, using fallback 50000');
+        }
+        $estCost = $billed / 1000000 * $price;
         error_log('billed_characters=' . $billed);
         break;
     }
@@ -182,7 +190,8 @@ error_log("[DeepL] translated=$outPath billed=$billed status=done");
 </header>
 <main class="card">
   <p><a href="output/<?= h($outName) ?>" download>翻訳結果をダウンロード</a></p>
-  <p>請求文字数: <?= h(number_format($billed)) ?></p>
+  <p>課金対象文字数: <?= h(number_format($billed)) ?></p>
+  <p>概算コスト: <?= h($priceCcy . ' ' . number_format($estCost, 2)) ?></p>
 </main>
 <footer>&copy; 2025 翻訳ツール</footer>
 </body>
