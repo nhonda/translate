@@ -2,37 +2,18 @@
 session_start();
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/includes/common.php';
-use Dotenv\Dotenv;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use Smalot\PdfParser\Parser;
-
-const RATE_JPY_PER_MILLION = 2500;
-
-$dotenv = Dotenv::createImmutable(__DIR__);
-if (file_exists(__DIR__.'/.env')) {
-    $dotenv->load();
-}
 
 $uploadsDir = __DIR__ . '/uploads';
-$logDir     = __DIR__ . '/logs';
 if (!is_dir($uploadsDir) && !mkdir($uploadsDir, 0777, true)) {
     error_log("Failed to create uploads directory: $uploadsDir");
     http_response_code(500);
     die('アップロードディレクトリの作成に失敗しました');
-}
-if (!is_dir($logDir) && !mkdir($logDir, 0777, true)) {
-    error_log("Failed to create log directory: $logDir");
-    http_response_code(500);
-    die('ログディレクトリの作成に失敗しました');
 }
 
 $step = 'upload';
 $message = '';
 $filename = '';
 $ext = '';
-$rawChars = 0;
-$costJpy = 0;
-$fmtOptions = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['file']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
@@ -44,75 +25,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!move_uploaded_file($_FILES['file']['tmp_name'], $dest)) {
             $message = 'ファイルの保存に失敗しました';
         } else {
-            $allowed = ['txt','pdf','docx','xlsx'];
+            $allowed = ['pdf','docx','pptx','xlsx','doc'];
+            $maxSize = 30 * 1024 * 1024; // 30MB
             if (!in_array($ext, $allowed, true)) {
                 unlink($dest);
                 $message = '非対応形式';
+            } elseif (filesize($dest) > $maxSize) {
+                unlink($dest);
+                $message = '30MBを超えています';
             } else {
-                $rawChars = count_chars_local($dest, $ext);
-                if ($rawChars === false) {
-                    error_log("Failed to read uploaded file: $dest");
-                    unlink($dest);
-                    http_response_code(500);
-                    die('ファイルの読み込みに失敗しました');
-                }
-                $costJpy = round(max(50000, $rawChars) / 1_000_000 * RATE_JPY_PER_MILLION);
-
-                if (file_put_contents(
-                    "$logDir/history.csv",
-                    sprintf("%s,%d,%d\n", $filename, $rawChars, time()),
-                    FILE_APPEND
-                ) === false) {
-                    error_log('Failed to write history log');
-                    unlink($dest);
-                    http_response_code(500);
-                    die('ログ書き込みに失敗しました');
-                }
-
                 $step = 'confirm';
-                if ($ext === 'txt') {
-                    $fmtOptions = '<option value="pdf">PDF</option><option value="docx">DOCX</option>';
-                } elseif ($ext === 'pdf') {
-                    $fmtOptions = '<option value="pdf">PDF</option><option value="docx">DOCX</option>';
-                } elseif ($ext === 'xlsx') {
-                    $fmtOptions = '<option value="xlsx">XLSX</option>';
-                } else {
-                    $fmtOptions = '<option value="pdf">PDF</option><option value="docx">DOCX</option><option value="xlsx">XLSX</option>';
-                }
             }
         }
     }
-}
-
-function count_chars_local(string $path, string $ext): int|false {
-    if (!file_exists($path)) return false;
-    $text = '';
-    if ($ext === 'txt') {
-        $text = file_get_contents($path);
-        if ($text === false) {
-            error_log("Failed to read text file: $path");
-            return false;
-        }
-    } elseif ($ext === 'pdf') {
-        $parser = new Parser();
-        $pdf = $parser->parseFile($path);
-        $text = $pdf->getText();
-    } elseif ($ext === 'docx') {
-        $zip = new ZipArchive();
-        if ($zip->open($path)) {
-            $xml = $zip->getFromName('word/document.xml');
-            $zip->close();
-            $text = strip_tags($xml);
-        }
-    } elseif ($ext === 'xlsx') {
-        $spreadsheet = IOFactory::load($path);
-        foreach ($spreadsheet->getAllSheets() as $sheet) {
-            foreach ($sheet->toArray(null, true, true, true) as $row) {
-                $text .= implode("\t", $row) . "\n";
-            }
-        }
-    }
-    return $text ? mb_strlen($text, 'UTF-8') : false;
 }
 
 ?><!DOCTYPE html>
@@ -163,14 +88,8 @@ function count_chars_local(string $path, string $ext): int|false {
       <?php else: ?>
         <h2>アップロード結果</h2>
         <p>ファイル名: <?= h($filename) ?></p>
-        <p>文字数：<?= h(number_format($rawChars)) ?>字</p>
-        <p>概算コスト：￥<?= h(number_format($costJpy)) ?></p>
         <form id="translateForm" action="translate.php" method="post">
           <input type="hidden" name="filename" value="<?= h($filename) ?>">
-          <label for="out_fmt">変換形式：</label>
-          <select name="out_fmt" id="out_fmt">
-            <?= $fmtOptions // pre-defined safe HTML ?>
-          </select>
           <button type="submit">翻訳を開始</button>
         </form>
       <?php endif; ?>
@@ -185,45 +104,6 @@ function count_chars_local(string $path, string $ext): int|false {
       fileInput.addEventListener('change', function(){
         const name = this.files.length ? this.files[0].name : 'ファイルが選択されていません。';
         document.getElementById('selectedFileName').textContent = name;
-      });
-    }
-
-    const form = document.getElementById('translateForm');
-    if (form) {
-      form.addEventListener('submit', function(e){
-        e.preventDefault();
-        showSpinner();
-        updateSpinner(0, '翻訳実行中…');
-        const fd = new FormData(form);
-        const timer = setInterval(() => {
-          fetch('progress.php', { credentials: 'same-origin' })
-            .then(r => r.json())
-            .then(d => {
-              updateSpinner(d.percent, d.message);
-              if (d.percent >= 100) {
-                clearInterval(timer);
-              }
-            })
-            .catch(() => {});
-        }, 1000);
-
-        fetch('translate.php', {method: 'POST', body: fd, credentials: 'same-origin'})
-          .then(res => {
-            clearInterval(timer);
-            if (res.redirected && res.ok) {
-              window.location.href = res.url;
-            } else {
-              return res.text().then(msg => {
-                alert(msg || '翻訳に失敗しました');
-                hideSpinner();
-              });
-            }
-          })
-          .catch(err => {
-            clearInterval(timer);
-            hideSpinner();
-            alert(err.message || '翻訳に失敗しました');
-          });
       });
     }
   </script>
