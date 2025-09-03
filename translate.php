@@ -16,7 +16,15 @@ $apiKey  = $_ENV['DEEPL_API_KEY']  ?? getenv('DEEPL_API_KEY')  ?? '';
 $apiBase = rtrim($_ENV['DEEPL_API_BASE'] ?? getenv('DEEPL_API_BASE') ?? '', '/');
 $price   = (float)($_ENV['DEEPL_PRICE_PER_MILLION'] ?? getenv('DEEPL_PRICE_PER_MILLION') ?? 25);
 $priceCcy = $_ENV['DEEPL_PRICE_CCY'] ?? getenv('DEEPL_PRICE_CCY') ?? 'USD';
-if ($apiKey === '' || $apiBase === '') {
+$missing = [];
+if ($apiKey === '') {
+    $missing[] = 'DEEPL_API_KEY';
+}
+if ($apiBase === '') {
+    $missing[] = 'DEEPL_API_BASE';
+}
+if ($missing) {
+    error_log('[DeepL] missing env vars: ' . implode(', ', $missing));
     http_response_code(500);
     echo 'DeepL API設定が不足しています';
     exit;
