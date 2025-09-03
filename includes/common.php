@@ -58,8 +58,31 @@ function estimate_chars(string $path, string $ext): array {
         if (is_string($text) && $text !== '') {
             $chars = mb_strlen($text);
         } else {
-            error_log('PDF text extraction failed for ' . $path);
-            return [$chars, 'pdf_failed'];
+            $ocrmypdfCmd = trim((string) @shell_exec('command -v ocrmypdf'));
+            if ($ocrmypdfCmd !== '') {
+                $tmpPdf = tempnam(sys_get_temp_dir(), 'ocr');
+                $tmpTxt = tempnam(sys_get_temp_dir(), 'ocr');
+                $cmd = sprintf(
+                    'ocrmypdf -q --sidecar %s %s %s 2>/dev/null',
+                    escapeshellarg($tmpTxt),
+                    escapeshellarg($path),
+                    escapeshellarg($tmpPdf)
+                );
+                shell_exec($cmd);
+                $ocrText = @file_get_contents($tmpTxt);
+                @unlink($tmpPdf);
+                @unlink($tmpTxt);
+                if (is_string($ocrText) && $ocrText !== '') {
+                    $chars = mb_strlen($ocrText);
+                    $detail = 'pdf_ocr';
+                } else {
+                    error_log('PDF text extraction failed for ' . $path);
+                    return [$chars, 'pdf_failed'];
+                }
+            } else {
+                error_log('PDF text extraction failed for ' . $path);
+                return [$chars, 'pdf_failed'];
+            }
         }
     } elseif ($ext === 'txt') {
         $content = @file_get_contents($path);
