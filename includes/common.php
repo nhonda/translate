@@ -44,7 +44,7 @@ function estimate_chars(string $path, string $ext): array {
         $detail = 'pdf';
         $cmd = sprintf('pdftotext -q %s - 2>/dev/null', escapeshellarg($path));
         $text = shell_exec($cmd);
-        if (!is_string($text) || $text === '') {
+        if (!is_string($text) || trim((string) $text) === '') {
             $tmp = tempnam(sys_get_temp_dir(), 'pdf');
             $cmd = sprintf(
                 'qpdf --decrypt %s %s 2>/dev/null && pdftotext -q %s - 2>/dev/null',
@@ -55,11 +55,12 @@ function estimate_chars(string $path, string $ext): array {
             $text = shell_exec($cmd);
             @unlink($tmp);
         }
-        if (is_string($text) && $text !== '') {
+        if (is_string($text) && trim($text) !== '') {
             $chars = mb_strlen($text);
         } else {
             $ocrmypdfCmd = trim((string) @shell_exec('command -v ocrmypdf'));
-            if ($ocrmypdfCmd !== '') {
+            $tesseractCmd = trim((string) @shell_exec('command -v tesseract'));
+            if ($ocrmypdfCmd !== '' && $tesseractCmd !== '') {
                 $tmpPdf = tempnam(sys_get_temp_dir(), 'ocr');
                 $tmpTxt = tempnam(sys_get_temp_dir(), 'ocr');
                 $cmd = sprintf(
@@ -72,7 +73,7 @@ function estimate_chars(string $path, string $ext): array {
                 $ocrText = @file_get_contents($tmpTxt);
                 @unlink($tmpPdf);
                 @unlink($tmpTxt);
-                if (is_string($ocrText) && $ocrText !== '') {
+                if (is_string($ocrText) && trim($ocrText) !== '') {
                     $chars = mb_strlen($ocrText);
                     $detail = 'pdf_ocr';
                 } else {
