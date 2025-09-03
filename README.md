@@ -7,7 +7,7 @@ DeepL Translation Tool (PHP)
 - **Composer**
 - **php-zip**（DOCX出力に必須。例: `sudo apt install php8.2-zip`）
 - **pdftotext** と **qpdf**（PDF文字数見積もりのみに使用。コスト見積もりを行わない場合は不要。例: `apt install poppler-utils qpdf`）
-- **ocrmypdf** と **tesseract-ocr**（オプション。標準のテキスト抽出が失敗したPDFにOCRを適用する場合に使用。例: `apt install ocrmypdf tesseract-ocr`）
+- **ocrmypdf** と **tesseract-ocr**（オプション。標準のテキスト抽出が空だったPDFに自動でOCRを適用するために使用。例: `apt install ocrmypdf tesseract-ocr`）
 - 以下の Composer パッケージ
     - [`vlucas/phpdotenv`](https://github.com/vlucas/phpdotenv)
     - [`mpdf/mpdf`](https://github.com/mpdf/mpdf)
@@ -43,7 +43,7 @@ DeepL Translation Tool (PHP)
     sudo apt install ocrmypdf tesseract-ocr
     ```
 
-    PDFのテキスト抽出が失敗した場合にOCRを試みるために使用します。
+    標準のテキスト抽出が空だったPDFに自動でOCRを適用します。両方のコマンドが見つからない場合は処理をスキップします。
 
 4. **.envファイルの作成とAPI設定**
 
