@@ -21,6 +21,7 @@ if ($apiKey === '' || $apiBase === '') {
 }
 
 $filename = $_POST['filename'] ?? '';
+$outputFormat = $_POST['output_format'] ?? '';
 $src = __DIR__ . '/uploads/' . basename($filename);
 if ($filename === '' || !is_file($src)) {
     http_response_code(400);
@@ -149,7 +150,9 @@ if (!is_dir($outDir) && !mkdir($outDir, 0777, true)) {
     echo '出力ディレクトリの作成に失敗しました';
     exit;
 }
-$outExt = ($ext === 'pdf') ? 'pdf' : 'docx';
+$outExt = ($ext === 'pdf')
+    ? (in_array($outputFormat, ['pdf', 'docx'], true) ? $outputFormat : 'pdf')
+    : 'docx';
 $outName = pathinfo($filename, PATHINFO_FILENAME) . '-ja.' . $outExt;
 $outPath = $outDir . '/' . $outName;
 if (file_put_contents($outPath, $fileData) === false) {
