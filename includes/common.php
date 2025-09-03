@@ -34,6 +34,13 @@ function estimate_chars(string $path, string $ext): array {
     $detail = '';
 
     if ($ext === 'pdf') {
+        $pdftotextCmd = trim((string) @shell_exec('command -v pdftotext'));
+        $qpdfCmd      = trim((string) @shell_exec('command -v qpdf'));
+        if ($pdftotextCmd === '' || $qpdfCmd === '') {
+            error_log('pdftotext or qpdf not available');
+            return [$chars, 'pdf_failed'];
+        }
+
         $detail = 'pdf';
         $cmd = sprintf('pdftotext -q %s - 2>/dev/null', escapeshellarg($path));
         $text = shell_exec($cmd);
@@ -52,6 +59,7 @@ function estimate_chars(string $path, string $ext): array {
             $chars = mb_strlen($text);
         } else {
             error_log('PDF text extraction failed for ' . $path);
+            return [$chars, 'pdf_failed'];
         }
     } elseif ($ext === 'txt') {
         $content = @file_get_contents($path);

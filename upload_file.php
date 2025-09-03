@@ -40,6 +40,7 @@ if (!is_dir($uploadsDir) && !mkdir($uploadsDir, 0777, true)) {
 
 $step = 'upload';
 $message = '';
+$warning = '';
 $filename = '';
 $ext = '';
 $outputFormat = $_POST['output_format'] ?? '';
@@ -66,8 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = '30MBを超えています';
             } else {
                 [$estChars, $detail] = estimate_chars($dest, $ext);
-                if ($detail === 'pdf' && $estChars === 0) {
-                    $message = 'PDFのテキスト抽出に失敗しました。スキャンPDFなどは非対応です。';
+                if ($detail === 'pdf_failed') {
+                    $warning = 'PDFの文字数を推定できませんでした。スキャンPDFなどは翻訳できない可能性があります。';
                 }
                 if ($message === '') {
                     $logDir = __DIR__ . '/logs';
@@ -91,7 +92,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             fclose($fh);
                         }
                     }
-                    $displayChars = max(50000, $estChars);
+                    $displayChars = $estChars;
+                    if ($detail === 'pdf_failed') {
+                        $displayChars = max(50000, $displayChars);
+                    }
                     $charDisp = number_format($displayChars);
                     if ($displayChars !== $estChars) {
                         $charDisp .= ' (' . number_format($estChars) . ')';
@@ -118,6 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     aside { float: left; width: 200px; }
     main { margin-left: 220px; }
     .error { color: red; }
+    .warning { color: #d90; }
     .file-input-wrapper { margin-bottom: 10px; }
     #selectedFileName { margin: 6px 0; color: #333; }
   </style>
@@ -140,6 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <main>
     <div class="card">
       <?php if ($message): ?><p class="error"><?= h($message) ?></p><?php endif; ?>
+      <?php if ($warning): ?><p class="warning"><?= h($warning) ?></p><?php endif; ?>
       <?php if ($step === 'upload'): ?>
         <form method="post" enctype="multipart/form-data">
           <div class="file-input-wrapper">
