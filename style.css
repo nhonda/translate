@@ -120,3 +120,19 @@ footer {
   height:40px;
   line-height:40px;
 }
+
+/* ---------- Spinner Progress ---------- */
+#progress-bar {
+  width: 0;
+  height: 8px;
+  background: #0078d4;
+  transition: width 0.3s ease;
+  margin: 10px auto 0;
+}
+
+#progress-text {
+  display: block;
+  margin-top: 8px;
+  color: #fff;
+  text-align: center;
+}
