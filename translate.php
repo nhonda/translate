@@ -1,5 +1,7 @@
 <?php
 session_start();
+$sid = session_id();
+session_write_close();
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Mpdf\Mpdf;
@@ -42,7 +44,7 @@ if (!is_dir($dlDir) && !mkdir($dlDir, 0755, true)) {
     die('ダウンロードディレクトリの作成に失敗しました');
 }
 
-$progressFile = sys_get_temp_dir() . '/progress_' . session_id() . '.json';
+$progressFile = sys_get_temp_dir() . '/progress_' . $sid . '.json';
 $updateProgress = function(int $percent, string $message) use ($progressFile) {
     file_put_contents($progressFile, json_encode(['percent'=>$percent, 'message'=>$message]));
 };
