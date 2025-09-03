@@ -11,6 +11,8 @@ if (file_exists(__DIR__ . '/.env')) {
 }
 $apiKey  = $_ENV['DEEPL_API_KEY']  ?? getenv('DEEPL_API_KEY')  ?? '';
 $apiBase = rtrim($_ENV['DEEPL_API_BASE'] ?? getenv('DEEPL_API_BASE') ?? '', '/');
+$price   = (float)($_ENV['DEEPL_PRICE_PER_MILLION'] ?? getenv('DEEPL_PRICE_PER_MILLION') ?? 2500);
+$priceCcy = $_ENV['DEEPL_PRICE_CCY'] ?? getenv('DEEPL_PRICE_CCY') ?? 'JPY';
 $missing = [];
 if ($apiKey === '') {
     $missing[] = 'DEEPL_API_KEY';
@@ -36,6 +38,8 @@ $message = '';
 $filename = '';
 $ext = '';
 $outputFormat = $_POST['output_format'] ?? '';
+$charDisp = '';
+$costDisp = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['file']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
@@ -56,6 +60,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 unlink($dest);
                 $message = '30MBを超えています';
             } else {
+                [$estChars] = estimate_chars($dest, $ext);
+                $logDir = __DIR__ . '/logs';
+                if (!is_dir($logDir) && !mkdir($logDir, 0777, true)) {
+                    error_log('Failed to create log directory: ' . $logDir);
+                } else {
+                    $historyPath = $logDir . '/history.csv';
+                    $fh = fopen($historyPath, 'a');
+                    if ($fh === false) {
+                        error_log('Failed to open history file: ' . $historyPath);
+                    } else {
+                        if (flock($fh, LOCK_EX)) {
+                            $estCostLog = number_format(max(50000, $estChars) / 1_000_000 * $price, 2, '.', '');
+                            if (fputcsv($fh, [$filename, $estChars, $estCostLog]) === false) {
+                                error_log('Failed to write history row for ' . $filename);
+                            }
+                            flock($fh, LOCK_UN);
+                        } else {
+                            error_log('Failed to lock history file: ' . $historyPath);
+                        }
+                        fclose($fh);
+                    }
+                }
+                $displayChars = max(50000, $estChars);
+                $charDisp = number_format($displayChars);
+                if ($displayChars !== $estChars) {
+                    $charDisp .= ' (' . number_format($estChars) . ')';
+                }
+                $estCost = $displayChars / 1_000_000 * $price;
+                $costDisp = $priceCcy . ' ' . number_format($estCost, 2);
                 $step = 'confirm';
             }
         }
@@ -110,6 +143,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <?php else: ?>
         <h2>アップロード結果</h2>
         <p>ファイル名: <?= h($filename) ?></p>
+        <p>推定文字数: <?= h($charDisp) ?></p>
+        <p>概算コスト: <?= h($costDisp) ?></p>
         <form id="translateForm" action="translate.php" method="post">
           <input type="hidden" name="filename" value="<?= h($filename) ?>">
           <label for="output_format">出力形式（PDFアップ時のみDOCX可）</label>
