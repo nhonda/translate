@@ -3,6 +3,27 @@ session_start();
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/includes/common.php';
 
+use Dotenv\Dotenv;
+
+$dotenv = Dotenv::createImmutable(__DIR__);
+if (file_exists(__DIR__ . '/.env')) {
+    $dotenv->load();
+}
+$apiKey  = $_ENV['DEEPL_API_KEY']  ?? getenv('DEEPL_API_KEY')  ?? '';
+$apiBase = rtrim($_ENV['DEEPL_API_BASE'] ?? getenv('DEEPL_API_BASE') ?? '', '/');
+$missing = [];
+if ($apiKey === '') {
+    $missing[] = 'DEEPL_API_KEY';
+}
+if ($apiBase === '') {
+    $missing[] = 'DEEPL_API_BASE';
+}
+if ($missing) {
+    error_log('[DeepL] missing env vars: ' . implode(', ', $missing));
+    http_response_code(500);
+    die('DeepL API設定が不足しています');
+}
+
 $uploadsDir = __DIR__ . '/uploads';
 if (!is_dir($uploadsDir) && !mkdir($uploadsDir, 0777, true)) {
     error_log("Failed to create uploads directory: $uploadsDir");
