@@ -40,7 +40,7 @@ if ($filename === '' || !is_file($src)) {
     exit;
 }
 $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-$allowed = ['pdf','docx','pptx','xlsx','doc'];
+$allowed = ['pdf','docx','pptx','xlsx','doc','txt'];
 if (!in_array($ext, $allowed, true)) {
     http_response_code(400);
     echo '非対応形式';
@@ -56,57 +56,27 @@ register_shutdown_function(function() use ($progressFile) {
         unlink($progressFile);
     }
 });
-$updateProgress(10, 'ドキュメントを送信中');
 
-// Upload document
-$ch = curl_init($apiBase . '/document');
-$postFields = [
-    'file' => new CURLFile($src),
-    'target_lang' => 'JA',
-];
-if ($ext === 'pdf' && $outputFormat !== '') {
-    $postFields['output_format'] = $outputFormat;
-}
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST => true,
-    CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
-    CURLOPT_POSTFIELDS => $postFields,
-    CURLOPT_CONNECTTIMEOUT => 15,
-    CURLOPT_TIMEOUT => 60,
-]);
-$res  = curl_exec($ch);
-$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$err  = curl_error($ch);
-curl_close($ch);
-if ($res === false || $code >= 400) {
-    $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
-    error_log("[DeepL] status=$code message=$detail");
-    http_response_code($code ?: 500);
-    echo '翻訳開始に失敗しました';
-    exit;
-}
-$data = json_decode($res, true);
-$documentId  = $data['document_id']  ?? '';
-$documentKey = $data['document_key'] ?? '';
-if ($documentId === '' || $documentKey === '') {
-    http_response_code(500);
-    echo '翻訳開始のレスポンスが不正です';
-    exit;
-}
-
-$updateProgress(30, '翻訳中');
 $billed = 0;
 $estCost = 0;
 $fallbackApplied = false;
-while (true) {
-    usleep(1500000);
-    $ch = curl_init($apiBase . '/document/' . $documentId);
+$outPath = '';
+$outName = '';
+
+if ($ext === 'txt') {
+    $updateProgress(10, 'テキストを送信中');
+    $text = file_get_contents($src);
+    if ($text === false) {
+        http_response_code(500);
+        echo 'テキストの読み込みに失敗しました';
+        exit;
+    }
+    $ch = curl_init($apiBase . '/translate');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
-        CURLOPT_POSTFIELDS => http_build_query(['document_key' => $documentKey]),
+        CURLOPT_POSTFIELDS => http_build_query(['text' => $text, 'target_lang' => 'JA']),
         CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT => 60,
     ]);
@@ -118,70 +88,155 @@ while (true) {
         $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
         error_log("[DeepL] status=$code message=$detail");
         http_response_code($code ?: 500);
-        echo '翻訳状況の取得に失敗しました';
+        echo '翻訳に失敗しました';
         exit;
     }
-    $info = json_decode($res, true);
-    $status = $info['status'] ?? '';
-    if ($status === 'done') {
-        $billed = (int)($info['billed_characters'] ?? 0);
-        if ($billed === 0 && in_array($ext, ['pdf','doc','docx','pptx','xlsx'], true)) {
-            $billed = 50000;
-            error_log('[DeepL] billed_characters missing, using fallback 50000');
-            $fallbackApplied = true;
-        }
-        $estCost = $billed / 1000000 * $price;
-        break;
-    }
-    if ($status === 'error') {
-        $msg = $info['message'] ?? 'DeepLエラー';
-        error_log("[DeepL] status=error message=$msg");
+    $data = json_decode($res, true);
+    $translated = $data['translations'][0]['text'] ?? '';
+    if ($translated === '') {
         http_response_code(500);
-        echo $msg;
+        echo '翻訳結果の解析に失敗しました';
         exit;
     }
-    $updateProgress(30, '翻訳中...');
+    $outDir = '/var/www/translate/output';
+    if (!is_dir($outDir) && !mkdir($outDir, 0777, true)) {
+        error_log('Failed to create output directory: ' . $outDir);
+        http_response_code(500);
+        echo '出力ディレクトリの作成に失敗しました';
+        exit;
+    }
+    $outName = pathinfo($filename, PATHINFO_FILENAME) . '-ja.txt';
+    $outPath = $outDir . '/' . $outName;
+    if (file_put_contents($outPath, $translated) === false) {
+        error_log('Failed to save translated file: ' . $outPath);
+        http_response_code(500);
+        echo '翻訳結果の保存に失敗しました';
+        exit;
+    }
+    $billed = mb_strlen($text);
+    $estCost = $billed / 1000000 * $price;
+    $updateProgress(100, '完了');
+} else {
+    $updateProgress(10, 'ドキュメントを送信中');
+    $ch = curl_init($apiBase . '/document');
+    $postFields = [
+        'file' => new CURLFile($src),
+        'target_lang' => 'JA',
+    ];
+    if ($ext === 'pdf' && $outputFormat !== '') {
+        $postFields['output_format'] = $outputFormat;
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+        CURLOPT_POSTFIELDS => $postFields,
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_TIMEOUT => 60,
+    ]);
+    $res  = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err  = curl_error($ch);
+    curl_close($ch);
+    if ($res === false || $code >= 400) {
+        $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
+        error_log("[DeepL] status=$code message=$detail");
+        http_response_code($code ?: 500);
+        echo '翻訳開始に失敗しました';
+        exit;
+    }
+    $data = json_decode($res, true);
+    $documentId  = $data['document_id']  ?? '';
+    $documentKey = $data['document_key'] ?? '';
+    if ($documentId === '' || $documentKey === '') {
+        http_response_code(500);
+        echo '翻訳開始のレスポンスが不正です';
+        exit;
+    }
+    $updateProgress(30, '翻訳中');
+    while (true) {
+        usleep(1500000);
+        $ch = curl_init($apiBase . '/document/' . $documentId);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+            CURLOPT_POSTFIELDS => http_build_query(['document_key' => $documentKey]),
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_TIMEOUT => 60,
+        ]);
+        $res  = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+        if ($res === false || $code >= 400) {
+            $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
+            error_log("[DeepL] status=$code message=$detail");
+            http_response_code($code ?: 500);
+            echo '翻訳状況の取得に失敗しました';
+            exit;
+        }
+        $info = json_decode($res, true);
+        $status = $info['status'] ?? '';
+        if ($status === 'done') {
+            $billed = (int)($info['billed_characters'] ?? 0);
+            if ($billed === 0 && in_array($ext, ['pdf','doc','docx','pptx','xlsx'], true)) {
+                $billed = 50000;
+                error_log('[DeepL] billed_characters missing, using fallback 50000');
+                $fallbackApplied = true;
+            }
+            $estCost = $billed / 1000000 * $price;
+            break;
+        }
+        if ($status === 'error') {
+            $msg = $info['message'] ?? 'DeepLエラー';
+            error_log("[DeepL] status=error message=$msg");
+            http_response_code(500);
+            echo $msg;
+            exit;
+        }
+        $updateProgress(30, '翻訳中...');
+    }
+    $updateProgress(80, '結果を取得中');
+    $ch = curl_init($apiBase . '/document/' . $documentId . '/result');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+        CURLOPT_POSTFIELDS => http_build_query(['document_key' => $documentKey]),
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_TIMEOUT => 60,
+    ]);
+    $fileData = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err  = curl_error($ch);
+    curl_close($ch);
+    if ($fileData === false || $code >= 400) {
+        $detail = $fileData ? (json_decode($fileData, true)['message'] ?? $fileData) : $err;
+        error_log("[DeepL] status=$code message=$detail");
+        http_response_code($code ?: 500);
+        echo '翻訳結果の取得に失敗しました';
+        exit;
+    }
+    $outDir = '/var/www/translate/output';
+    if (!is_dir($outDir) && !mkdir($outDir, 0777, true)) {
+        error_log('Failed to create output directory: ' . $outDir);
+        http_response_code(500);
+        echo '出力ディレクトリの作成に失敗しました';
+        exit;
+    }
+    $outExt = ($outputFormat === 'docx') ? 'docx' : ($ext === 'doc' ? 'docx' : $ext);
+    $outName = pathinfo($filename, PATHINFO_FILENAME) . '-ja.' . $outExt;
+    $outPath = $outDir . '/' . $outName;
+    if (file_put_contents($outPath, $fileData) === false) {
+        error_log('Failed to save translated file: ' . $outPath);
+        http_response_code(500);
+        echo '翻訳結果の保存に失敗しました';
+        exit;
+    }
+    $updateProgress(100, '完了');
 }
 
-$updateProgress(80, '結果を取得中');
-$ch = curl_init($apiBase . '/document/' . $documentId . '/result');
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST => true,
-    CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
-    CURLOPT_POSTFIELDS => http_build_query(['document_key' => $documentKey]),
-    CURLOPT_CONNECTTIMEOUT => 15,
-    CURLOPT_TIMEOUT => 60,
-]);
-$fileData = curl_exec($ch);
-$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$err  = curl_error($ch);
-curl_close($ch);
-if ($fileData === false || $code >= 400) {
-    $detail = $fileData ? (json_decode($fileData, true)['message'] ?? $fileData) : $err;
-    error_log("[DeepL] status=$code message=$detail");
-    http_response_code($code ?: 500);
-    echo '翻訳結果の取得に失敗しました';
-    exit;
-}
-
-$outDir = '/var/www/translate/output';
-if (!is_dir($outDir) && !mkdir($outDir, 0777, true)) {
-    error_log('Failed to create output directory: ' . $outDir);
-    http_response_code(500);
-    echo '出力ディレクトリの作成に失敗しました';
-    exit;
-}
-$outExt = ($outputFormat === 'docx') ? 'docx' : ($ext === 'doc' ? 'docx' : $ext);
-$outName = pathinfo($filename, PATHINFO_FILENAME) . '-ja.' . $outExt;
-$outPath = $outDir . '/' . $outName;
-if (file_put_contents($outPath, $fileData) === false) {
-    error_log('Failed to save translated file: ' . $outPath);
-    http_response_code(500);
-    echo '翻訳結果の保存に失敗しました';
-    exit;
-}
-$updateProgress(100, '完了');
 $estCostLog = number_format($estCost, 2, '.', '');
 $logMsg = sprintf('[DeepL] status=done billed=%d est_cost=%s%s output=%s', $billed, $priceCcy, $estCostLog, $outPath);
 if ($fallbackApplied) {

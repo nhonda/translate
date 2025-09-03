@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!move_uploaded_file($_FILES['file']['tmp_name'], $dest)) {
             $message = 'ファイルの保存に失敗しました';
         } else {
-            $allowed = ['pdf','docx','pptx','xlsx','doc'];
+            $allowed = ['pdf','docx','pptx','xlsx','doc','txt'];
             $maxSize = 30 * 1024 * 1024; // 30MB
             if (!in_array($ext, $allowed, true)) {
                 unlink($dest);
@@ -69,35 +69,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($detail === 'pdf' && $estChars === 0) {
                     $message = 'PDFのテキスト抽出に失敗しました。スキャンPDFなどは非対応です。';
                 }
-                $logDir = __DIR__ . '/logs';
-                if (!is_dir($logDir) && !mkdir($logDir, 0777, true)) {
-                    error_log('Failed to create log directory: ' . $logDir);
-                } else {
-                    $historyPath = $logDir . '/history.csv';
-                    $fh = fopen($historyPath, 'a');
-                    if ($fh === false) {
-                        error_log('Failed to open history file: ' . $historyPath);
+                if ($message === '') {
+                    $logDir = __DIR__ . '/logs';
+                    if (!is_dir($logDir) && !mkdir($logDir, 0777, true)) {
+                        error_log('Failed to create log directory: ' . $logDir);
                     } else {
-                        if (flock($fh, LOCK_EX)) {
-                            $estCostLog = number_format(max(50000, $estChars) / 1_000_000 * $price, 2, '.', '');
-                            if (fputcsv($fh, [$filename, $estChars, $estCostLog]) === false) {
-                                error_log('Failed to write history row for ' . $filename);
-                            }
-                            flock($fh, LOCK_UN);
+                        $historyPath = $logDir . '/history.csv';
+                        $fh = fopen($historyPath, 'a');
+                        if ($fh === false) {
+                            error_log('Failed to open history file: ' . $historyPath);
                         } else {
-                            error_log('Failed to lock history file: ' . $historyPath);
+                            if (flock($fh, LOCK_EX)) {
+                                $estCostLog = number_format(max(50000, $estChars) / 1_000_000 * $price, 2, '.', '');
+                                if (fputcsv($fh, [$filename, $estChars, $estCostLog]) === false) {
+                                    error_log('Failed to write history row for ' . $filename);
+                                }
+                                flock($fh, LOCK_UN);
+                            } else {
+                                error_log('Failed to lock history file: ' . $historyPath);
+                            }
+                            fclose($fh);
                         }
-                        fclose($fh);
                     }
+                    $displayChars = max(50000, $estChars);
+                    $charDisp = number_format($displayChars);
+                    if ($displayChars !== $estChars) {
+                        $charDisp .= ' (' . number_format($estChars) . ')';
+                    }
+                    $estCost = $displayChars / 1_000_000 * $price;
+                    $costDisp = $priceCcy . ' ' . number_format($estCost, 2);
+                    $step = 'confirm';
+                } else {
+                    unlink($dest);
                 }
-                $displayChars = max(50000, $estChars);
-                $charDisp = number_format($displayChars);
-                if ($displayChars !== $estChars) {
-                    $charDisp .= ' (' . number_format($estChars) . ')';
-                }
-                $estCost = $displayChars / 1_000_000 * $price;
-                $costDisp = $priceCcy . ' ' . number_format($estCost, 2);
-                $step = 'confirm';
             }
         }
     }
