@@ -34,6 +34,7 @@ function estimate_chars(string $path, string $ext): array {
     $detail = '';
 
     if ($ext === 'pdf') {
+        $detail = 'pdf';
         $cmd = sprintf('pdftotext -q %s - 2>/dev/null', escapeshellarg($path));
         $text = shell_exec($cmd);
         if (!is_string($text) || $text === '') {
@@ -49,7 +50,8 @@ function estimate_chars(string $path, string $ext): array {
         }
         if (is_string($text) && $text !== '') {
             $chars = mb_strlen($text);
-            $detail = 'pdf';
+        } else {
+            error_log('PDF text extraction failed for ' . $path);
         }
     } elseif (in_array($ext, ['docx', 'pptx', 'xlsx'], true)) {
         $zip = new ZipArchive();

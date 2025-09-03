@@ -60,7 +60,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 unlink($dest);
                 $message = '30MBを超えています';
             } else {
-                [$estChars] = estimate_chars($dest, $ext);
+                [$estChars, $detail] = estimate_chars($dest, $ext);
+                if ($detail === 'pdf' && $estChars === 0) {
+                    $message = 'PDFのテキスト抽出に失敗しました。スキャンPDFなどは非対応です。';
+                }
                 $logDir = __DIR__ . '/logs';
                 if (!is_dir($logDir) && !mkdir($logDir, 0777, true)) {
                     error_log('Failed to create log directory: ' . $logDir);
@@ -127,8 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <main>
     <div class="card">
+      <?php if ($message): ?><p class="error"><?= h($message) ?></p><?php endif; ?>
       <?php if ($step === 'upload'): ?>
-        <?php if ($message): ?><p class="error"><?= h($message) ?></p><?php endif; ?>
         <form method="post" enctype="multipart/form-data">
           <div class="file-input-wrapper">
             <input type="file" name="file" id="fileInput" style="display:none;" required>
