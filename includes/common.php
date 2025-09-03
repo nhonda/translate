@@ -53,6 +53,12 @@ function estimate_chars(string $path, string $ext): array {
         } else {
             error_log('PDF text extraction failed for ' . $path);
         }
+    } elseif ($ext === 'txt') {
+        $content = @file_get_contents($path);
+        if ($content !== false) {
+            $chars = mb_strlen($content);
+            $detail = 'txt';
+        }
     } elseif (in_array($ext, ['docx', 'pptx', 'xlsx'], true)) {
         $zip = new ZipArchive();
         if ($zip->open($path) === true) {
