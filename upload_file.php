@@ -3,49 +3,25 @@ session_start();
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/includes/common.php';
 
-use Dotenv\Dotenv;
-
-$dotenv = Dotenv::createImmutable(__DIR__);
-if (file_exists(__DIR__ . '/.env')) {
-    $dotenv->load();
-}
-$apiKey  = $_ENV['DEEPL_API_KEY']  ?? getenv('DEEPL_API_KEY')  ?? '';
-$apiBase = rtrim($_ENV['DEEPL_API_BASE'] ?? getenv('DEEPL_API_BASE') ?? '', '/');
-$rawPrice = $_ENV['DEEPL_PRICE_PER_MILLION'] ?? getenv('DEEPL_PRICE_PER_MILLION');
-if (!is_numeric($rawPrice) || (float)$rawPrice <= 0) {
-    $price = 2500;
-} else {
-    $price = (float)$rawPrice;
-}
-$priceCcy = $_ENV['DEEPL_PRICE_CCY'] ?? getenv('DEEPL_PRICE_CCY') ?? 'JPY';
-$missing = [];
-if ($apiKey === '') {
-    $missing[] = 'DEEPL_API_KEY';
-}
-if ($apiBase === '') {
-    $missing[] = 'DEEPL_API_BASE';
-}
-if ($missing) {
-    error_log('[DeepL] missing env vars: ' . implode(', ', $missing));
-    http_response_code(500);
-    die('DeepL API設定が不足しています');
-}
+const RATE_JPY_PER_MILLION = 2500;
 
 $uploadsDir = __DIR__ . '/uploads';
-if (!is_dir($uploadsDir) && !mkdir($uploadsDir, 0777, true)) {
-    error_log("Failed to create uploads directory: $uploadsDir");
-    http_response_code(500);
-    die('アップロードディレクトリの作成に失敗しました');
+$logDir     = __DIR__ . '/logs';
+foreach ([$uploadsDir, $logDir] as $dir) {
+    if (!is_dir($dir) && !mkdir($dir, 0777, true)) {
+        error_log("Failed to create directory: $dir");
+        http_response_code(500);
+        die('ディレクトリの作成に失敗しました');
+    }
 }
 
 $step = 'upload';
 $message = '';
-$warning = '';
 $filename = '';
 $ext = '';
-$outputFormat = $_POST['output_format'] ?? '';
-$charDisp = '';
-$costDisp = '';
+$rawChars = 0;
+$costJpy = 0;
+$fmtOptions = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['file']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
@@ -57,61 +33,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!move_uploaded_file($_FILES['file']['tmp_name'], $dest)) {
             $message = 'ファイルの保存に失敗しました';
         } else {
-            $allowed = ['pdf','docx','pptx','xlsx','doc','txt'];
-            $maxSize = 30 * 1024 * 1024; // 30MB
+            $allowed = ['txt','pdf','docx','xlsx'];
             if (!in_array($ext, $allowed, true)) {
                 unlink($dest);
                 $message = '非対応形式';
-            } elseif (filesize($dest) > $maxSize) {
-                unlink($dest);
-                $message = '30MBを超えています';
             } else {
-                [$estChars, $detail] = estimate_chars($dest, $ext);
-                if ($detail === 'pdf_failed') {
-                    $warning = 'PDFの文字数を推定できませんでした。スキャンPDFなどは翻訳できない可能性があります。';
-                }
-                if ($message === '') {
-                    $logDir = __DIR__ . '/logs';
-                    if (!is_dir($logDir) && !mkdir($logDir, 0777, true)) {
-                        error_log('Failed to create log directory: ' . $logDir);
-                    } else {
-                        $historyPath = $logDir . '/history.csv';
-                        $fh = fopen($historyPath, 'a');
-                        if ($fh === false) {
-                            error_log('Failed to open history file: ' . $historyPath);
-                        } else {
-                            if (flock($fh, LOCK_EX)) {
-                                $estCostLog = number_format(max(50000, $estChars) / 1_000_000 * $price, 2, '.', '');
-                                if (fputcsv($fh, [$filename, $estChars, $estCostLog]) === false) {
-                                    error_log('Failed to write history row for ' . $filename);
-                                }
-                                flock($fh, LOCK_UN);
-                            } else {
-                                error_log('Failed to lock history file: ' . $historyPath);
-                            }
-                            fclose($fh);
-                        }
-                    }
-                    $displayChars = $estChars;
-                    if ($detail === 'pdf_failed') {
-                        $displayChars = max(50000, $displayChars);
-                    }
-                    $charDisp = number_format($displayChars);
-                    if ($displayChars !== $estChars) {
-                        $charDisp .= ' (' . number_format($estChars) . ')';
-                    }
-                    $estCost = $displayChars / 1_000_000 * $price;
-                    $costDisp = $priceCcy . ' ' . number_format($estCost, 2);
-                    $step = 'confirm';
-                } else {
+                $rawChars = count_chars_local($dest);
+                if ($rawChars === false) {
                     unlink($dest);
+                    $message = '文字数の取得に失敗しました';
+                } else {
+                    $costJpy = round(max(50000, $rawChars) / 1_000_000 * RATE_JPY_PER_MILLION);
+                    file_put_contents("$logDir/history.csv", sprintf("%s,%d,%d\n", $filename, $rawChars, time()), FILE_APPEND);
+                    $step = 'confirm';
+                    $fmtOptions = [''];
+                    if ($ext === 'pdf' || $ext === 'txt') {
+                        $fmtOptions[] = 'pdf';
+                        $fmtOptions[] = 'docx';
+                    } elseif ($ext === 'docx') {
+                        $fmtOptions[] = 'pdf';
+                        $fmtOptions[] = 'docx';
+                    } elseif ($ext === 'xlsx') {
+                        $fmtOptions[] = 'xlsx';
+                    }
                 }
             }
         }
     }
 }
 
-?><!DOCTYPE html>
+function count_chars_local(string $path): int|false {
+    if (!is_file($path)) {
+        return false;
+    }
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $text = '';
+    if ($ext === 'txt') {
+        $text = @file_get_contents($path);
+    } elseif ($ext === 'pdf') {
+        $cmd = sprintf('pdftotext %s - 2>/dev/null', escapeshellarg($path));
+        $text = shell_exec($cmd);
+    } elseif ($ext === 'docx') {
+        $zip = new ZipArchive();
+        if ($zip->open($path) === true) {
+            $xml = $zip->getFromName('word/document.xml');
+            $zip->close();
+            if ($xml !== false) {
+                $text = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+            }
+        }
+    } elseif ($ext === 'xlsx') {
+        $zip = new ZipArchive();
+        if ($zip->open($path) === true) {
+            $xml = $zip->getFromName('xl/sharedStrings.xml');
+            $zip->close();
+            if ($xml !== false) {
+                $text = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+            }
+        }
+    }
+    if (!is_string($text)) {
+        return false;
+    }
+    $text = trim($text);
+    return $text === '' ? 0 : mb_strlen($text, 'UTF-8');
+}
+?>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -122,7 +110,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     aside { float: left; width: 200px; }
     main { margin-left: 220px; }
     .error { color: red; }
-    .warning { color: #d90; }
     .file-input-wrapper { margin-bottom: 10px; }
     #selectedFileName { margin: 6px 0; color: #333; }
   </style>
@@ -144,9 +131,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <main>
     <div class="card">
-      <?php if ($message): ?><p class="error"><?= h($message) ?></p><?php endif; ?>
-      <?php if ($warning): ?><p class="warning"><?= h($warning) ?></p><?php endif; ?>
       <?php if ($step === 'upload'): ?>
+        <?php if ($message): ?><p class="error"><?= h($message) ?></p><?php endif; ?>
         <form method="post" enctype="multipart/form-data">
           <div class="file-input-wrapper">
             <input type="file" name="file" id="fileInput" style="display:none;" required>
@@ -161,15 +147,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <?php else: ?>
         <h2>アップロード結果</h2>
         <p>ファイル名: <?= h($filename) ?></p>
-        <p>推定文字数: <?= h($charDisp) ?></p>
-        <p>概算コスト: <?= h($costDisp) ?></p>
+        <p>文字数：<?= h(number_format($rawChars)) ?>字</p>
+        <p>概算コスト：￥<?= h(number_format($costJpy)) ?></p>
         <form id="translateForm" action="translate.php" method="post">
           <input type="hidden" name="filename" value="<?= h($filename) ?>">
-          <label for="output_format">出力形式（PDFアップ時のみDOCX可）</label>
+          <label for="output_format">変換形式：</label>
           <select name="output_format" id="output_format">
-            <option value="" <?= $outputFormat === '' ? 'selected' : '' ?>></option>
-            <option value="pdf" <?= $outputFormat === 'pdf' ? 'selected' : '' ?>>pdf</option>
-            <option value="docx" <?= $outputFormat === 'docx' ? 'selected' : '' ?>>docx</option>
+            <?php foreach ($fmtOptions as $opt): ?>
+              <option value="<?= h($opt) ?>"><?= h($opt) ?></option>
+            <?php endforeach; ?>
           </select>
           <button type="submit">翻訳を開始</button>
         </form>
@@ -185,6 +171,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       fileInput.addEventListener('change', function(){
         const name = this.files.length ? this.files[0].name : 'ファイルが選択されていません。';
         document.getElementById('selectedFileName').textContent = name;
+      });
+    }
+
+    const form = document.getElementById('translateForm');
+    if (form) {
+      form.addEventListener('submit', function(e){
+        e.preventDefault();
+        showSpinner();
+        updateSpinner(0, '翻訳実行中…');
+        const fd = new FormData(form);
+        const timer = setInterval(() => {
+          fetch('progress.php', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(d => {
+              updateSpinner(d.percent, d.message);
+              if (d.percent >= 100) {
+                clearInterval(timer);
+              }
+            })
+            .catch(() => {});
+        }, 1000);
+
+        fetch('translate.php', {method: 'POST', body: fd, credentials: 'same-origin'})
+          .then(res => {
+            if (!res.ok) throw new Error('翻訳に失敗しました');
+            return res;
+          })
+          .then(res => {
+            clearInterval(timer);
+            if (res.redirected) {
+              window.location.href = res.url;
+            } else {
+              hideSpinner();
+            }
+          })
+          .catch(err => {
+            clearInterval(timer);
+            hideSpinner();
+            alert(err.message || '翻訳に失敗しました');
+          });
       });
     }
   </script>
