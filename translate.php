@@ -189,6 +189,28 @@ if ($fallbackApplied) {
 }
 error_log($logMsg);
 
+$logDir = __DIR__ . '/logs';
+if (!is_dir($logDir) && !mkdir($logDir, 0777, true)) {
+    error_log('Failed to create log directory: ' . $logDir);
+} else {
+    $historyPath = $logDir . '/history.csv';
+    $fh = fopen($historyPath, 'a');
+    if ($fh === false) {
+        error_log('Failed to open history file: ' . $historyPath);
+    } else {
+        if (flock($fh, LOCK_EX)) {
+            $row = [$filename, $billed, $estCostLog];
+            if (fputcsv($fh, $row) === false) {
+                error_log('Failed to write history row for ' . $filename);
+            }
+            flock($fh, LOCK_UN);
+        } else {
+            error_log('Failed to lock history file: ' . $historyPath);
+        }
+        fclose($fh);
+    }
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="ja">
