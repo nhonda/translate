@@ -35,7 +35,12 @@ if (!in_array($fmt, ['pdf','docx','xlsx'], true)) die('不正な形式');
 $src = __DIR__ . '/uploads/' . basename($filename);
 if (!is_file($src)) die('元ファイルが見つかりません');
 
-$ext    = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+if (($ext === 'pdf' && $fmt === 'xlsx') || ($ext === 'xlsx' && $fmt !== 'xlsx')) {
+    http_response_code(400);
+    echo 'DeepL API仕様によりサポートしていません';
+    exit;
+}
 $base   = pathinfo($filename, PATHINFO_FILENAME);
 $dlDir  = __DIR__ . '/downloads';
 if (!is_dir($dlDir) && !mkdir($dlDir, 0755, true)) {
@@ -152,11 +157,6 @@ if ($ext === 'txt') {
   B) .xlsx  →  DeepL Text-API
 ====================================================================*/
 if ($ext === 'xlsx') {
-    if ($fmt !== 'xlsx') {
-        http_response_code(400);
-        echo 'DeepL API仕様上、XLSX→他形式はサポートされていません。XLSXでのみ出力可能です。';
-        exit;
-    }
     // DeepL Text API helper: send array of texts with exponential backoff retry
     $deepl = function(array $texts) {
         if (empty($texts)) return [];
@@ -278,13 +278,6 @@ if ($ext === 'xlsx') {
 /*====================================================================
   C) .pdf / .docx  →  DeepL Document-API
 ====================================================================*/
-// DeepL API: PDFアップロード時はPDFまたはDOCXが出力可能
-if ($ext === 'pdf' && $fmt === 'xlsx') {
-    http_response_code(400);
-    echo 'DeepL API仕様上、PDF→XLSXはサポートされていません。';
-    exit;
-}
-
 $up = curl_init('https://api.deepl.com/v2/document');
 $fileCurl = new CURLFile($src);
 curl_setopt_array($up, [
