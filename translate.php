@@ -2,51 +2,37 @@
 session_start();
 $sid = session_id();
 session_write_close();
+
 require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/includes/common.php';
 
-use Mpdf\Mpdf;
-use Mpdf\Config\ConfigVariables;
-use Mpdf\Config\FontVariables;
-use PhpOffice\PhpWord\PhpWord;
-use PhpOffice\PhpWord\IOFactory;
-use PhpOffice\PhpSpreadsheet\IOFactory as SpreadsheetIOFactory;
+use Dotenv\Dotenv;
 
-/* DeepL APIキー読み込み */
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$apiKey = '';
+$dotenv = Dotenv::createImmutable(__DIR__);
 if (file_exists(__DIR__ . '/.env')) {
     $dotenv->load();
-    $apiKey = $_ENV['DEEPL_AUTH_KEY'] ?? '';
-} else {
-    $apiKey = getenv('DEEPL_AUTH_KEY') ?: '';
 }
-define('DEEPL_KEY', $apiKey);
-if (empty(DEEPL_KEY)) {
-    http_response_code(400);
-    echo 'DeepL APIキーが設定されていません';
-    exit;
-}
-
-/* パラメータ取得 */
-$filename = $_POST['filename'] ?? '';
-$fmt      = $_POST['out_fmt']  ?? '';             // pdf | docx | xlsx
-if (!in_array($fmt, ['pdf','docx','xlsx'], true)) die('不正な形式');
-
-$src = __DIR__ . '/uploads/' . basename($filename);
-if (!is_file($src)) die('元ファイルが見つかりません');
-
-$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-if (($ext === 'pdf' && $fmt === 'xlsx') || ($ext === 'xlsx' && $fmt !== 'xlsx')) {
-    http_response_code(400);
-    echo 'DeepL API仕様によりサポートしていません';
-    exit;
-}
-$base   = pathinfo($filename, PATHINFO_FILENAME);
-$dlDir  = __DIR__ . '/downloads';
-if (!is_dir($dlDir) && !mkdir($dlDir, 0755, true)) {
-    error_log("Failed to create download directory: $dlDir");
+$apiKey  = $_ENV['DEEPL_API_KEY']  ?? getenv('DEEPL_API_KEY')  ?? '';
+$apiBase = rtrim($_ENV['DEEPL_API_BASE'] ?? getenv('DEEPL_API_BASE') ?? '', '/');
+if ($apiKey === '' || $apiBase === '') {
     http_response_code(500);
-    die('ダウンロードディレクトリの作成に失敗しました');
+    echo 'DeepL API設定が不足しています';
+    exit;
+}
+
+$filename = $_POST['filename'] ?? '';
+$src = __DIR__ . '/uploads/' . basename($filename);
+if ($filename === '' || !is_file($src)) {
+    http_response_code(400);
+    echo 'ファイルが見つかりません';
+    exit;
+}
+$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+$allowed = ['pdf','docx','pptx','xlsx','doc'];
+if (!in_array($ext, $allowed, true)) {
+    http_response_code(400);
+    echo '非対応形式';
+    exit;
 }
 
 $progressFile = sys_get_temp_dir() . '/progress_' . $sid . '.json';
@@ -58,306 +44,140 @@ register_shutdown_function(function() use ($progressFile) {
         unlink($progressFile);
     }
 });
-$updateProgress(10, 'ドキュメントをアップロード中');
+$updateProgress(10, 'ドキュメントを送信中');
 
-/*====================================================================
-  A) .txt  →  DeepL Text-API  →  PDFまたはDOCX
-====================================================================*/
-if ($ext === 'txt') {
-    if ($fmt === 'xlsx') {
-        http_response_code(400);
-        echo 'TXT入力はPDFまたはDOCXのみ出力可能です。';
+// Upload document
+$ch = curl_init($apiBase . '/document');
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_POST => true,
+    CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+    CURLOPT_POSTFIELDS => [
+        'file' => new CURLFile($src),
+        'target_lang' => 'JA',
+    ],
+    CURLOPT_CONNECTTIMEOUT => 15,
+    CURLOPT_TIMEOUT => 60,
+]);
+$res  = curl_exec($ch);
+$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$err  = curl_error($ch);
+curl_close($ch);
+if ($res === false || $code >= 400) {
+    $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
+    error_log("[DeepL] status=$code message=$detail");
+    http_response_code($code ?: 500);
+    echo '翻訳開始に失敗しました';
+    exit;
+}
+$data = json_decode($res, true);
+$documentId  = $data['document_id']  ?? '';
+$documentKey = $data['document_key'] ?? '';
+if ($documentId === '' || $documentKey === '') {
+    http_response_code(500);
+    echo '翻訳開始のレスポンスが不正です';
+    exit;
+}
+
+$updateProgress(30, '翻訳中');
+$billed = 0;
+while (true) {
+    usleep(1500000);
+    $ch = curl_init($apiBase . '/document/' . $documentId);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+        CURLOPT_POSTFIELDS => http_build_query(['document_key' => $documentKey]),
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_TIMEOUT => 60,
+    ]);
+    $res  = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err  = curl_error($ch);
+    curl_close($ch);
+    if ($res === false || $code >= 400) {
+        $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
+        error_log("[DeepL] status=$code message=$detail");
+        http_response_code($code ?: 500);
+        echo '翻訳状況の取得に失敗しました';
         exit;
     }
-    $plain = file_get_contents($src);
-    if ($plain === false) {
-        error_log("Failed to read source file: $src");
+    $info = json_decode($res, true);
+    $status = $info['status'] ?? '';
+    if ($status === 'done') {
+        $billed = (int)($info['billed_characters'] ?? 0);
+        error_log('billed_characters=' . $billed);
+        break;
+    }
+    if ($status === 'error') {
+        $msg = $info['message'] ?? 'DeepLエラー';
+        error_log("[DeepL] status=error message=$msg");
         http_response_code(500);
-        die('元ファイルの読み込みに失敗しました');
+        echo $msg;
+        exit;
     }
-    if (trim($plain) === '') die('翻訳対象が空です');
-
-    // DeepL Text-API (4500字ごと)
-    $chunks     = mb_str_split($plain, 4500);
-    $translated = '';
-    $totalChunks = max(1, count($chunks));
-    $updateProgress(20, '翻訳をリクエストしています');
-    foreach ($chunks as $idx => $c) {
-        $post = http_build_query([
-            'auth_key'    => DEEPL_KEY,
-            'text'        => $c,
-            'source_lang' => 'EN',
-            'target_lang' => 'JA',
-        ]);
-        $ctx = stream_context_create(['http'=>[
-            'method'=>'POST',
-            'header'=>'Content-Type: application/x-www-form-urlencoded',
-            'content'=>$post
-        ]]);
-        $resStr = file_get_contents(
-            'https://api.deepl.com/v2/translate', false, $ctx);
-        if ($resStr === false) {
-            error_log('Text-API request failed');
-            http_response_code(500);
-            die('翻訳に失敗しました');
-        }
-        $res = json_decode($resStr, true);
-        if (!isset($res['translations'][0]['text'])) {
-            error_log('Text-API response error: ' . ($res['message'] ?? $resStr));
-            die('翻訳に失敗しました');
-        }
-        $translated .= $res['translations'][0]['text'];
-        $updateProgress(20 + (int)(($idx + 1) / $totalChunks * 60), '翻訳をリクエストしています');
-    }
-    $updateProgress(80, '結果を取得しています');
-    $updateProgress(80, '結果を取得しています');
-    $updateProgress(85, 'ファイル生成中');
-
-    /* PDF or DOCX で保存 */
-    if ($fmt === 'pdf') {
-        // --- PDF生成 ---
-        $extraFontDir = __DIR__ . '/fonts';                 // ipaexg.ttf を置いた場所
-        $fontDir      = array_merge(
-            (new ConfigVariables())->getDefaults()['fontDir'],
-            [ $extraFontDir ]
-        );
-        $fontData     = (new FontVariables())->getDefaults()['fontdata'] + [
-            'ipaexg' => [ 'R' => 'ipaexg.ttf' ],            // Regular ウェイト
-        ];
-        $mpdf = new Mpdf([
-            'fontDir'          => $fontDir,
-            'fontdata'         => $fontData,
-            'default_font'     => 'ipaexg',
-            'autoScriptToLang' => true,
-            'autoLangToFont'   => true,
-            'tempDir'          => '/tmp',
-            'format'           => 'A4',
-        ]);
-        $html = '<pre style="font-family: ipaexg; font-size: 12px; white-space: pre-wrap;">'
-              . htmlspecialchars($translated, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</pre>';
-        $mpdf->WriteHTML($html);
-        $save = $base . '_jp.pdf';
-        $mpdf->Output($dlDir . '/' . $save, \Mpdf\Output\Destination::FILE);
-    } else {
-        // --- DOCX生成 ---
-        $phpWord = new PhpWord();
-        $section = $phpWord->addSection();
-        // IPAexゴシックを使う場合は別途インストール・登録が必要
-        $section->addText($translated, ['name'=>'IPAexGothic', 'size'=>12]);
-        $save = $base . '_jp.docx';
-        $writer = IOFactory::createWriter($phpWord, 'Word2007');
-        $writer->save($dlDir . '/' . $save);
-    }
-    $updateProgress(100, '完了');
-    header('Location: downloads.php?done=' . urlencode($save));
-    exit;
+    $updateProgress(30, '翻訳中...');
 }
 
-/*====================================================================
-  B) .xlsx  →  DeepL Text-API
-====================================================================*/
-if ($ext === 'xlsx') {
-    // DeepL Text API helper: send array of texts with exponential backoff retry
-    $deepl = function(array $texts) {
-        if (empty($texts)) return [];
-        $query = http_build_query([
-            'auth_key'    => DEEPL_KEY,
-            'source_lang' => 'EN',
-            'target_lang' => 'JA',
-        ], '', '&', PHP_QUERY_RFC3986);
-        foreach ($texts as $t) {
-            $query .= '&text=' . urlencode($t);
-        }
-        $delay = 1;
-        for ($i = 0; $i < 5; $i++) {
-            $ch = curl_init('https://api.deepl.com/v2/translate');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => $query,
-            ]);
-            $resStr = curl_exec($ch);
-            $code   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            if ($resStr !== false && $code === 200) {
-                $res = json_decode($resStr, true);
-                if (isset($res['translations']) && count($res['translations']) === count($texts)) {
-                    return array_column($res['translations'], 'text');
-                }
-                error_log('Text-API response error: ' . ($res['message'] ?? $resStr));
-                break;
-            }
-            if (!in_array($code, [429, 503], true)) break;
-            sleep($delay);
-            $delay *= 2;
-        }
-        http_response_code(500);
-        die('翻訳に失敗しました');
-    };
-
-    $spreadsheet = SpreadsheetIOFactory::load($src);
-    $updateProgress(20, 'セル数を集計中');
-
-    $totalCells = 0;
-    foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
-        foreach ($sheet->getRowIterator() as $row) {
-            $cellIterator = $row->getCellIterator();
-            $cellIterator->setIterateOnlyExistingCells(false);
-            foreach ($cellIterator as $cell) {
-                $val = $cell->getValue();
-                if (is_string($val) && trim($val) !== '') {
-                    $totalCells++;
-                }
-            }
-        }
-    }
-
-    $processedCells = 0;
-    $totalCells = max(1, $totalCells);
-    $updateProgress(20, '翻訳をリクエストしています');
-
-    foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
-        $batchCells = [];
-        $batchTexts = [];
-        $batchLen   = 0;
-        foreach ($sheet->getRowIterator() as $row) {
-            $cellIterator = $row->getCellIterator();
-            $cellIterator->setIterateOnlyExistingCells(false);
-            foreach ($cellIterator as $cell) {
-                $val = $cell->getValue();
-                if (is_string($val) && trim($val) !== '') {
-                    $len = mb_strlen($val, 'UTF-8');
-                    if ($batchCells && $batchLen + $len > 30000) {
-                        $translated = $deepl($batchTexts);
-                        foreach ($batchCells as $idx => $c) {
-                            $c->setValue($translated[$idx]);
-                        }
-                        $processedCells += count($batchCells);
-                        $updateProgress(20 + (int)($processedCells / $totalCells * 60), '翻訳をリクエストしています');
-                        $batchCells = [];
-                        $batchTexts = [];
-                        $batchLen   = 0;
-                    }
-                    $batchCells[] = $cell;
-                    $batchTexts[] = $val;
-                    $batchLen    += $len;
-                } else {
-                    if ($batchCells) {
-                        $translated = $deepl($batchTexts);
-                        foreach ($batchCells as $idx => $c) {
-                            $c->setValue($translated[$idx]);
-                        }
-                        $processedCells += count($batchCells);
-                        $updateProgress(20 + (int)($processedCells / $totalCells * 60), '翻訳をリクエストしています');
-                        $batchCells = [];
-                        $batchTexts = [];
-                        $batchLen   = 0;
-                    }
-                }
-            }
-        }
-        if ($batchCells) {
-            $translated = $deepl($batchTexts);
-            foreach ($batchCells as $idx => $c) {
-                $c->setValue($translated[$idx]);
-            }
-            $processedCells += count($batchCells);
-            $updateProgress(20 + (int)($processedCells / $totalCells * 60), '翻訳をリクエストしています');
-        }
-    }
-    $updateProgress(80, '結果を取得しています');
-    $updateProgress(85, 'ファイル生成中');
-    $save = $base . '_jp.xlsx';
-    $writer = SpreadsheetIOFactory::createWriter($spreadsheet, 'Xlsx');
-    $writer->save($dlDir . '/' . $save);
-    $updateProgress(100, '完了');
-    header('Location: downloads.php?done=' . urlencode($save));
-    exit;
-}
-
-/*====================================================================
-  C) .pdf / .docx  →  DeepL Document-API
-====================================================================*/
-$up = curl_init('https://api.deepl.com/v2/document');
-$fileCurl = new CURLFile($src);
-curl_setopt_array($up, [
+$updateProgress(80, '結果を取得中');
+$ch = curl_init($apiBase . '/document/' . $documentId . '/result');
+curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST           => true,
-    CURLOPT_POSTFIELDS     => [
-        'file'          => $fileCurl,
-        'auth_key'      => DEEPL_KEY,
-        'source_lang'   => 'EN',
-        'target_lang'   => 'JA',
-        'output_format' => $fmt,
-    ]
+    CURLOPT_POST => true,
+    CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+    CURLOPT_POSTFIELDS => http_build_query(['document_key' => $documentKey]),
+    CURLOPT_CONNECTTIMEOUT => 15,
+    CURLOPT_TIMEOUT => 60,
 ]);
-$resp = curl_exec($up);
-$code = curl_getinfo($up, CURLINFO_HTTP_CODE);
-curl_close($up);
-$updateProgress(20, '翻訳をリクエストしています');
+$fileData = curl_exec($ch);
+$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$err  = curl_error($ch);
+curl_close($ch);
+if ($fileData === false || $code >= 400) {
+    $detail = $fileData ? (json_decode($fileData, true)['message'] ?? $fileData) : $err;
+    error_log("[DeepL] status=$code message=$detail");
+    http_response_code($code ?: 500);
+    echo '翻訳結果の取得に失敗しました';
+    exit;
+}
 
-if ($code !== 200) {
-    error_log("Document-API upload ERROR $code : $resp");
-    die('翻訳に失敗しました');
-}
-$respArr = json_decode($resp, true);
-if (!isset($respArr['document_id'], $respArr['document_key'])) {
-    error_log('Document-API upload error: ' . ($respArr['message'] ?? $resp));
-    die('翻訳に失敗しました');
-}
-[$id, $key] = [$respArr['document_id'], $respArr['document_key']];
-
-$progressBase = 20;
-for ($i = 0; $i < 300; $i++) {
-    sleep(4);
-    $resp = file_get_contents(
-        "https://api.deepl.com/v2/document/$id?auth_key=" . DEEPL_KEY . "&document_key=$key"
-    );
-    if ($resp === false) {
-        error_log('Document-API status request failed');
-        http_response_code(500);
-        die('翻訳に失敗しました');
-    }
-    $stat = json_decode($resp, true);
-    if (!is_array($stat) || !isset($stat['status'])) {
-        error_log('Document-API status parse error: ' . $resp);
-        http_response_code(500);
-        die('翻訳に失敗しました');
-    }
-    if ($stat['status'] === 'done') break;
-    if ($stat['status'] === 'error') {
-        error_log('Document-API status error: ' . ($stat['message'] ?? 'unknown'));
-        http_response_code(500);
-        die('翻訳に失敗しました');
-    }
-    $updateProgress($progressBase + (int)(($i + 1) / 300 * 60), '翻訳処理中');
-}
-if ($stat['status']!=='done') {
-    error_log('Document-API timeout');
+$outDir = '/var/www/translate/output';
+if (!is_dir($outDir) && !mkdir($outDir, 0777, true)) {
+    error_log('Failed to create output directory: ' . $outDir);
     http_response_code(500);
-    die('翻訳に失敗しました');
+    echo '出力ディレクトリの作成に失敗しました';
+    exit;
 }
-
-/* ダウンロード */
-$updateProgress(85, '結果を取得しています');
-$tmp = tempnam($dlDir,'tmp_');
-$in  = fopen(
-    "https://api.deepl.com/v2/document/$id/result?auth_key=".DEEPL_KEY."&document_key=$key",
-    'rb');
-if ($in === false) {
-    error_log('Document-API result download failed');
-    die('翻訳に失敗しました');
+$outExt = ($ext === 'pdf') ? 'pdf' : 'docx';
+$outName = pathinfo($filename, PATHINFO_FILENAME) . '-ja.' . $outExt;
+$outPath = $outDir . '/' . $outName;
+if (file_put_contents($outPath, $fileData) === false) {
+    error_log('Failed to save translated file: ' . $outPath);
+    http_response_code(500);
+    echo '翻訳結果の保存に失敗しました';
+    exit;
 }
-$out = fopen($tmp,'wb');
-stream_copy_to_stream($in,$out);
-fclose($in);
-fclose($out);
-
-// ファイル名拡張子
-$actual_ext = $fmt;
-
-$save = $base . '_jp.' . $actual_ext;
-rename($tmp, "$dlDir/$save");
 $updateProgress(100, '完了');
-header('Location: downloads.php?done=' . urlencode($save));
-exit;
+error_log("[DeepL] translated=$outPath billed=$billed status=done");
+
+?>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>翻訳完了</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>翻訳完了</h1>
+  <nav><a href="index.html">トップに戻る</a></nav>
+</header>
+<main class="card">
+  <p><a href="output/<?= h($outName) ?>" download>翻訳結果をダウンロード</a></p>
+  <p>請求文字数: <?= h(number_format($billed)) ?></p>
+</main>
+<footer>&copy; 2025 翻訳ツール</footer>
+</body>
+</html>
