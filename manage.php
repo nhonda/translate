@@ -253,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function(){
       updateSpinner(0, '翻訳を開始しています');
       const fd = new FormData(form);
       const timer = setInterval(() => {
-        fetch('progress.php')
+        fetch('progress.php', { credentials: 'same-origin' })
           .then(r => r.json())
           .then(d => {
             updateSpinner(d.percent, d.message);
@@ -264,7 +264,7 @@ document.addEventListener('DOMContentLoaded', function(){
           .catch(() => {});
       }, 1000);
 
-      fetch('translate.php', {method: 'POST', body: fd})
+        fetch('translate.php', {method: 'POST', body: fd, credentials: 'same-origin'})
         .then(res => {
           if (!res.ok) throw new Error('翻訳に失敗しました');
           return res;
