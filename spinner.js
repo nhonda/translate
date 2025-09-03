@@ -10,7 +10,10 @@ function updateSpinner(progress, message) {
   var bar = document.getElementById('progress-bar');
   var text = document.getElementById('progress-text');
   if (bar) bar.style.width = progress + '%';
-  if (text) text.textContent = message || '';
+  if (text) {
+    var msg = message || '';
+    text.textContent = msg + (msg ? ' ' : '') + progress + '%';
+  }
 }
 document.addEventListener('DOMContentLoaded', hideSpinner);
 
