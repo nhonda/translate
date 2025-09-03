@@ -40,7 +40,7 @@ register_shutdown_function(function() use ($progressFile) {
         unlink($progressFile);
     }
 });
-$updateProgress(10, 'ファイルを読み込み中');
+$updateProgress(10, 'ドキュメントをアップロード中');
 
 /*====================================================================
   A) .txt  →  DeepL Text-API  →  PDFまたはDOCX
@@ -61,6 +61,7 @@ if ($ext === 'txt') {
     $chunks     = mb_str_split($plain, 4500);
     $translated = '';
     $totalChunks = max(1, count($chunks));
+    $updateProgress(20, '翻訳をリクエストしています');
     foreach ($chunks as $idx => $c) {
         $post = http_build_query([
             'auth_key'    => DEEPL_KEY,
@@ -86,9 +87,10 @@ if ($ext === 'txt') {
             die('翻訳に失敗しました');
         }
         $translated .= $res['translations'][0]['text'];
-        $updateProgress(20 + (int)(($idx + 1) / $totalChunks * 60), 'テキスト翻訳中');
+        $updateProgress(20 + (int)(($idx + 1) / $totalChunks * 60), '翻訳をリクエストしています');
     }
-
+    $updateProgress(80, '結果を取得しています');
+    $updateProgress(80, '結果を取得しています');
     $updateProgress(85, 'ファイル生成中');
 
     /* PDF or DOCX で保存 */
@@ -195,7 +197,7 @@ if ($ext === 'xlsx') {
 
     $processedCells = 0;
     $totalCells = max(1, $totalCells);
-    $updateProgress(20, 'セル翻訳中');
+    $updateProgress(20, '翻訳をリクエストしています');
 
     foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
         $batchCells = [];
@@ -214,7 +216,7 @@ if ($ext === 'xlsx') {
                             $c->setValue($translated[$idx]);
                         }
                         $processedCells += count($batchCells);
-                        $updateProgress(20 + (int)($processedCells / $totalCells * 60), 'セル翻訳中');
+                        $updateProgress(20 + (int)($processedCells / $totalCells * 60), '翻訳をリクエストしています');
                         $batchCells = [];
                         $batchTexts = [];
                         $batchLen   = 0;
@@ -229,7 +231,7 @@ if ($ext === 'xlsx') {
                             $c->setValue($translated[$idx]);
                         }
                         $processedCells += count($batchCells);
-                        $updateProgress(20 + (int)($processedCells / $totalCells * 60), 'セル翻訳中');
+                        $updateProgress(20 + (int)($processedCells / $totalCells * 60), '翻訳をリクエストしています');
                         $batchCells = [];
                         $batchTexts = [];
                         $batchLen   = 0;
@@ -243,9 +245,10 @@ if ($ext === 'xlsx') {
                 $c->setValue($translated[$idx]);
             }
             $processedCells += count($batchCells);
-            $updateProgress(20 + (int)($processedCells / $totalCells * 60), 'セル翻訳中');
+            $updateProgress(20 + (int)($processedCells / $totalCells * 60), '翻訳をリクエストしています');
         }
     }
+    $updateProgress(80, '結果を取得しています');
     $updateProgress(85, 'ファイル生成中');
     $save = $base . '_jp.xlsx';
     $writer = SpreadsheetIOFactory::createWriter($spreadsheet, 'Xlsx');
@@ -279,7 +282,7 @@ curl_setopt_array($up, [
 $resp = curl_exec($up);
 $code = curl_getinfo($up, CURLINFO_HTTP_CODE);
 curl_close($up);
-$updateProgress(20, 'DeepLにアップロード完了');
+$updateProgress(20, '翻訳をリクエストしています');
 
 if ($code !== 200) {
     error_log("Document-API upload ERROR $code : $resp");
@@ -315,7 +318,7 @@ for ($i = 0; $i < 300; $i++) {
         http_response_code(500);
         die('翻訳に失敗しました');
     }
-    $updateProgress($progressBase + (int)(($i + 1) / 300 * 60), 'DeepL処理中');
+    $updateProgress($progressBase + (int)(($i + 1) / 300 * 60), '翻訳処理中');
 }
 if ($stat['status']!=='done') {
     error_log('Document-API timeout');
@@ -324,7 +327,7 @@ if ($stat['status']!=='done') {
 }
 
 /* ダウンロード */
-$updateProgress(85, 'ファイルダウンロード中');
+$updateProgress(85, '結果を取得しています');
 $tmp = tempnam($dlDir,'tmp_');
 $in  = fopen(
     "https://api.deepl.com/v2/document/$id/result?auth_key=".DEEPL_KEY."&document_key=$key",
