@@ -6,20 +6,23 @@ DeepL Translation Tool (PHP)
 - **PHP 8.x**
 - **Composer**
 - **php-zip**（DOCX出力に必須。例: `sudo apt install php8.2-zip`）
-- 以下の Composer パッケージ  
-    - [`vlucas/phpdotenv`](https://github.com/vlucas/phpdotenv)  
-    - [`mpdf/mpdf`](https://github.com/mpdf/mpdf)  
+- 以下の Composer パッケージ
+    - [`vlucas/phpdotenv`](https://github.com/vlucas/phpdotenv)
+    - [`mpdf/mpdf`](https://github.com/mpdf/mpdf)
     - [`phpoffice/phpword`](https://github.com/PHPOffice/PHPWord)
     - [`phpoffice/phpspreadsheet`](https://github.com/PHPOffice/PhpSpreadsheet)
-    - [`smalot/pdfparser`](https://github.com/smalot/pdfparser)
+    
+- PDF解析には外部ライブラリを使用せず、DeepLの**Document API**を直接利用します。
 
 ## セットアップ
 
 1. **Composerパッケージのインストール**
 
     ```bash
-    composer require vlucas/phpdotenv mpdf/mpdf phpoffice/phpword phpoffice/phpspreadsheet smalot/pdfparser
+    composer require vlucas/phpdotenv mpdf/mpdf phpoffice/phpword phpoffice/phpspreadsheet
     ```
+
+    DeepLのDocument APIを直接利用するため、PDF解析用ライブラリは不要です。
 
 2. **php-zip拡張のインストール・有効化**
 
@@ -32,13 +35,17 @@ DeepL Translation Tool (PHP)
 
     `php -m | grep zip` で `zip` が表示されればOKです。
 
-3. **.envファイルの作成とAPIキー設定**
+3. **.envファイルの作成とAPI設定**
 
-    プロジェクトルート直下に`.env`ファイルを作成し、下記のように記述します（実際のAPIキーに書き換えてください）。
+    プロジェクトルート直下に`.env`ファイルを作成し、下記のように記述します（実際の値に置き換えてください）。
 
     ```
-    DEEPL_AUTH_KEY=xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxxxx
+    DEEPL_API_KEY=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    DEEPL_API_BASE=https://api-free.deepl.com/v2
     ```
+
+    - `DEEPL_API_KEY` : DeepLの認証キー。
+    - `DEEPL_API_BASE` : Document API のエンドポイント。Proプランの場合は `https://api.deepl.com/v2` を指定します。
 
 4. **.envファイルのセキュリティ対策**
 
@@ -59,23 +66,22 @@ DeepL Translation Tool (PHP)
 
 ## 使い方
 
-1. `index.html` にアクセス
-2. 左のメニューから「ファイルアップロード」をクリックし、翻訳したいファイルをアップロード
-3. `upload_file.php` からファイル（**TXT, PDF, DOCX, XLSX**）をアップロード（最大 20 MB）
-4. 文字数を自動計算し、**概算料金**を表示
-5. 出力形式を **PDF・DOCX・XLSX** から選択し、`translate.php` が DeepL API で翻訳
-    - `.txt` は「PDF」または「DOCX」どちらも選択可能
-    - `.pdf` アップロード時は「PDF」または「DOCX」どちらも選択可能
-    - `.xlsx` アップロード時は**仕様上「XLSX出力のみ」**
-6. 完成したファイルは `downloads.php` でダウンロード可能
-7. `manage.php` ではアップロード済みファイルの**削除や再翻訳**が可能
-8. アップロード履歴は `logs/history.csv` に記録
+1. **ファイルをアップロード** – `index.html` から翻訳したいファイル（TXT, PDF, DOCX, XLSX）をアップロードします。
+2. **DeepLへ送信** – アップロードされたファイルを DeepL の Document API に送信して翻訳します。
+3. **出力保存・リンク表示** – 翻訳結果は `output/` ディレクトリに保存され、ダウンロードリンクが表示されます。
 
 ## ディレクトリ構成
 
 - `uploads/` : アップロードされた元ファイル
-- `downloads/` : 翻訳後に保存されるファイル
+- `output/` : DeepLから取得した翻訳結果を保存
 - `logs/history.csv` : ファイル名・文字数・アップロード日時を記録
+
+## テスト手順（CLI例）
+
+```bash
+curl -F file=@sample.pdf "$DEEPL_API_BASE/document" \
+     -H "Authorization: DeepL-Auth-Key $DEEPL_API_KEY"
+```
 
 ## 注意事項
 
