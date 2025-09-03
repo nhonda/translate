@@ -250,7 +250,7 @@ document.addEventListener('DOMContentLoaded', function(){
     form.addEventListener('submit', function(e){
       e.preventDefault();
       showSpinner();
-      updateSpinner(0, '翻訳を開始しています');
+      updateSpinner(0, '翻訳実行中…');
       const fd = new FormData(form);
       const timer = setInterval(() => {
         fetch('progress.php', { credentials: 'same-origin' })
