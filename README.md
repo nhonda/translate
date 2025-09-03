@@ -6,6 +6,7 @@ DeepL Translation Tool (PHP)
 - **PHP 8.x**
 - **Composer**
 - **php-zip**（DOCX出力に必須。例: `sudo apt install php8.2-zip`）
+- **pdftotext** と **qpdf**（PDF文字数見積もりのみに使用。コスト見積もりを行わない場合は不要。例: `apt install poppler-utils qpdf`）
 - 以下の Composer パッケージ
     - [`vlucas/phpdotenv`](https://github.com/vlucas/phpdotenv)
     - [`mpdf/mpdf`](https://github.com/mpdf/mpdf)
