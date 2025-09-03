@@ -90,6 +90,7 @@ if ($documentId === '' || $documentKey === '') {
 $updateProgress(30, '翻訳中');
 $billed = 0;
 $estCost = 0;
+$fallbackApplied = false;
 while (true) {
     usleep(1500000);
     $ch = curl_init($apiBase . '/document/' . $documentId);
@@ -119,9 +120,9 @@ while (true) {
         if ($billed === 0 && in_array($ext, ['pdf','doc','docx','pptx','xlsx'], true)) {
             $billed = 50000;
             error_log('[DeepL] billed_characters missing, using fallback 50000');
+            $fallbackApplied = true;
         }
         $estCost = $billed / 1000000 * $price;
-        error_log('billed_characters=' . $billed);
         break;
     }
     if ($status === 'error') {
@@ -173,7 +174,12 @@ if (file_put_contents($outPath, $fileData) === false) {
     exit;
 }
 $updateProgress(100, '完了');
-error_log("[DeepL] translated=$outPath billed=$billed status=done");
+$estCostLog = number_format($estCost, 2, '.', '');
+$logMsg = sprintf('[DeepL] status=done billed=%d est_cost=%s%s output=%s', $billed, $priceCcy, $estCostLog, $outPath);
+if ($fallbackApplied) {
+    $logMsg .= ' fallback_min_charge_applied';
+}
+error_log($logMsg);
 
 ?>
 <!DOCTYPE html>
