@@ -1,6 +1,9 @@
-function showSpinner() {
+function showSpinner(message) {
   var s = document.getElementById('spinner');
-  if (s) s.style.display = 'flex';
+  if (s) {
+    s.style.display = 'flex';
+    updateSpinner(0, message || '翻訳実行中…');
+  }
 }
 function hideSpinner() {
   var s = document.getElementById('spinner');
