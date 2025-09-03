@@ -10,6 +10,6 @@ if (is_file($progressFile)) {
         $data = ['percent'=>0, 'message'=>''];
     }
 } else {
-    $data = ['percent'=>0, 'message'=>''];
+    $data = ['percent'=>0, 'message'=>'翻訳実行中……'];
 }
 echo json_encode($data);
