@@ -179,9 +179,8 @@ function count_chars_local(string $path): int|false {
       form.addEventListener('submit', function(e){
         e.preventDefault();
         showSpinner();
-        updateSpinner(0, '翻訳実行中…');
         const fd = new FormData(form);
-        const timer = setInterval(() => {
+        const poll = () => {
           fetch('progress.php', { credentials: 'same-origin' })
             .then(r => r.json())
             .then(d => {
@@ -191,7 +190,9 @@ function count_chars_local(string $path): int|false {
               }
             })
             .catch(() => {});
-        }, 1000);
+        };
+        poll();
+        const timer = setInterval(poll, 1000);
 
         fetch('translate.php', {method: 'POST', body: fd, credentials: 'same-origin'})
           .then(res => {

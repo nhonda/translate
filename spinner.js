@@ -1,25 +1,31 @@
-function showSpinner(message) {
-  var s = document.getElementById('spinner');
-  if (s) {
-    s.style.display = 'flex';
-    updateSpinner(0, message || '翻訳実行中…');
+(function (global) {
+  function showSpinner(message) {
+    const s = document.getElementById('spinner');
+    if (s) {
+      s.style.display = 'flex';
+      updateSpinner(0, message || '翻訳実行中…');
+    }
   }
-}
-function hideSpinner() {
-  var s = document.getElementById('spinner');
-  if (s) s.style.display = 'none';
-}
-function updateSpinner(progress, message) {
-  var bar = document.getElementById('progress-bar');
-  var text = document.getElementById('progress-text');
-  if (bar) bar.style.width = progress + '%';
-  if (text) {
-    var msg = message || '';
-    text.textContent = msg + (msg ? ' ' : '') + progress + '%';
-  }
-}
-document.addEventListener('DOMContentLoaded', hideSpinner);
 
-window.showSpinner = showSpinner;
-window.hideSpinner = hideSpinner;
-window.updateSpinner = updateSpinner;
+  function hideSpinner() {
+    const s = document.getElementById('spinner');
+    if (s) s.style.display = 'none';
+  }
+
+  function updateSpinner(progress, message) {
+    const bar = document.getElementById('progress-bar');
+    const text = document.getElementById('progress-text');
+    if (bar) bar.style.width = progress + '%';
+    if (text) {
+      const msg = message || '';
+      text.textContent = msg + (msg ? ' ' : '') + progress + '%';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', hideSpinner);
+
+  global.showSpinner = showSpinner;
+  global.updateSpinner = updateSpinner;
+  global.hideSpinner = hideSpinner;
+})(window);
+
