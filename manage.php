@@ -196,7 +196,7 @@ function cost_jpy(int $c): int {
               <form method="post" action="translate.php" class="translate-form">
                 <input type="hidden" name="filename" value="<?= h($f) ?>">
 
-                <select name="out_fmt">
+                <select name="output_format">
                   <option value="pdf">PDF</option>
                   <option value="docx">DOCX</option>
                   <option value="xlsx">XLSX</option>
