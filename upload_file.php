@@ -130,6 +130,7 @@ function count_chars_local(string $path, string $ext): int|false {
   </style>
 </head>
 <body>
+<?php include 'includes/spinner.php'; ?>
   <header>
     <h1>ファイル アップロード</h1>
     <nav><a href="index.html">トップに戻る</a></nav>
@@ -163,7 +164,7 @@ function count_chars_local(string $path, string $ext): int|false {
         <p>ファイル名: <?= h($filename) ?></p>
         <p>文字数：<?= h(number_format($rawChars)) ?>字</p>
         <p>概算コスト：￥<?= h(number_format($costJpy)) ?></p>
-        <form action="translate.php" method="post">
+        <form id="translateForm" action="translate.php" method="post">
           <input type="hidden" name="filename" value="<?= h($filename) ?>">
           <label for="out_fmt">変換形式：</label>
           <select name="out_fmt" id="out_fmt">
@@ -176,12 +177,55 @@ function count_chars_local(string $path, string $ext): int|false {
   </main>
 
   <footer>&copy; 2025 翻訳ツール</footer>
-
+  <script src="spinner.js"></script>
   <script>
-    document.getElementById('fileInput').addEventListener('change', function(){
-      const name = this.files.length ? this.files[0].name : 'ファイルが選択されていません。';
-      document.getElementById('selectedFileName').textContent = name;
-    });
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) {
+      fileInput.addEventListener('change', function(){
+        const name = this.files.length ? this.files[0].name : 'ファイルが選択されていません。';
+        document.getElementById('selectedFileName').textContent = name;
+      });
+    }
+
+    const form = document.getElementById('translateForm');
+    if (form) {
+      form.addEventListener('submit', function(e){
+        e.preventDefault();
+        showSpinner();
+        updateSpinner(0, '翻訳を開始しています');
+        const fd = new FormData(form);
+        const timer = setInterval(() => {
+          fetch('progress.php')
+            .then(r => r.json())
+            .then(d => {
+              updateSpinner(d.percent, d.message);
+              if (d.percent >= 100) {
+                clearInterval(timer);
+              }
+            })
+            .catch(() => {});
+        }, 1000);
+
+        fetch('translate.php', {method: 'POST', body: fd})
+          .then(res => {
+            if (!res.ok) throw new Error('翻訳に失敗しました');
+            return res;
+          })
+          .then(res => {
+            clearInterval(timer);
+            if (res.redirected) {
+              window.location.href = res.url;
+            } else {
+              hideSpinner();
+            }
+          })
+          .catch(err => {
+            clearInterval(timer);
+            hideSpinner();
+            alert(err.message || '翻訳に失敗しました');
+          });
+      });
+    }
   </script>
 </body>
 </html>

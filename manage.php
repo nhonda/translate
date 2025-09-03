@@ -193,7 +193,7 @@ function cost_jpy(int $c): int {
           <td>
             <div class="inline-form-wrap">
               <!-- 翻訳再実行form -->
-              <form method="post" action="translate.php">
+              <form method="post" action="translate.php" class="translate-form">
                 <input type="hidden" name="filename" value="<?= h($f) ?>">
 
                 <select name="out_fmt">
@@ -244,5 +244,47 @@ function cost_jpy(int $c): int {
 
 <footer>&copy; 2025 翻訳ツール</footer>
 <script src="spinner.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  document.querySelectorAll('.translate-form').forEach(function(form){
+    form.addEventListener('submit', function(e){
+      e.preventDefault();
+      showSpinner();
+      updateSpinner(0, '翻訳を開始しています');
+      const fd = new FormData(form);
+      const timer = setInterval(() => {
+        fetch('progress.php')
+          .then(r => r.json())
+          .then(d => {
+            updateSpinner(d.percent, d.message);
+            if (d.percent >= 100) {
+              clearInterval(timer);
+            }
+          })
+          .catch(() => {});
+      }, 1000);
+
+      fetch('translate.php', {method: 'POST', body: fd})
+        .then(res => {
+          if (!res.ok) throw new Error('翻訳に失敗しました');
+          return res;
+        })
+        .then(res => {
+          clearInterval(timer);
+          if (res.redirected) {
+            window.location.href = res.url;
+          } else {
+            hideSpinner();
+          }
+        })
+        .catch(err => {
+          clearInterval(timer);
+          hideSpinner();
+          alert(err.message || '翻訳に失敗しました');
+        });
+    });
+  });
+});
+</script>
 </body>
 </html>
