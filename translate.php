@@ -60,7 +60,9 @@ $updateProgress(10, 'ドキュメントをアップロード中');
 ====================================================================*/
 if ($ext === 'txt') {
     if ($fmt === 'xlsx') {
-        die('TXT入力はPDFまたはDOCXのみ出力可能です。');
+        http_response_code(400);
+        echo 'TXT入力はPDFまたはDOCXのみ出力可能です。';
+        exit;
     }
     $plain = file_get_contents($src);
     if ($plain === false) {
@@ -151,7 +153,9 @@ if ($ext === 'txt') {
 ====================================================================*/
 if ($ext === 'xlsx') {
     if ($fmt !== 'xlsx') {
-        die('DeepL API仕様上、XLSX→他形式はサポートされていません。XLSXでのみ出力可能です。');
+        http_response_code(400);
+        echo 'DeepL API仕様上、XLSX→他形式はサポートされていません。XLSXでのみ出力可能です。';
+        exit;
     }
     // DeepL Text API helper: send array of texts with exponential backoff retry
     $deepl = function(array $texts) {
@@ -276,7 +280,9 @@ if ($ext === 'xlsx') {
 ====================================================================*/
 // DeepL API: PDFアップロード時はPDFまたはDOCXが出力可能
 if ($ext === 'pdf' && $fmt === 'xlsx') {
-    die('DeepL API仕様上、PDF→XLSXはサポートされていません。');
+    http_response_code(400);
+    echo 'DeepL API仕様上、PDF→XLSXはサポートされていません。';
+    exit;
 }
 
 $up = curl_init('https://api.deepl.com/v2/document');

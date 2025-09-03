@@ -209,15 +209,14 @@ function count_chars_local(string $path, string $ext): int|false {
 
         fetch('translate.php', {method: 'POST', body: fd, credentials: 'same-origin'})
           .then(res => {
-            if (!res.ok) throw new Error('翻訳に失敗しました');
-            return res;
-          })
-          .then(res => {
             clearInterval(timer);
-            if (res.redirected) {
+            if (res.redirected && res.ok) {
               window.location.href = res.url;
             } else {
-              hideSpinner();
+              return res.text().then(msg => {
+                alert(msg || '翻訳に失敗しました');
+                hideSpinner();
+              });
             }
           })
           .catch(err => {
