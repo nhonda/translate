@@ -11,8 +11,18 @@ use PhpOffice\PhpSpreadsheet\IOFactory as SpreadsheetIOFactory;
 
 /* DeepL APIキー読み込み */
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->load();
-define('DEEPL_KEY', $_ENV['DEEPL_AUTH_KEY'] ?? '');
+$apiKey = '';
+if (file_exists(__DIR__ . '/.env')) {
+    $dotenv->load();
+    $apiKey = $_ENV['DEEPL_AUTH_KEY'] ?? '';
+} else {
+    $apiKey = getenv('DEEPL_AUTH_KEY') ?: '';
+}
+if ($apiKey === '') {
+    http_response_code(500);
+    die('DeepL APIキーが未設定です');
+}
+define('DEEPL_KEY', $apiKey);
 
 /* パラメータ取得 */
 $filename = $_POST['filename'] ?? '';
