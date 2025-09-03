@@ -11,7 +11,12 @@ if (file_exists(__DIR__ . '/.env')) {
 }
 $apiKey  = $_ENV['DEEPL_API_KEY']  ?? getenv('DEEPL_API_KEY')  ?? '';
 $apiBase = rtrim($_ENV['DEEPL_API_BASE'] ?? getenv('DEEPL_API_BASE') ?? '', '/');
-$price   = (float)($_ENV['DEEPL_PRICE_PER_MILLION'] ?? getenv('DEEPL_PRICE_PER_MILLION') ?? 2500);
+$rawPrice = $_ENV['DEEPL_PRICE_PER_MILLION'] ?? getenv('DEEPL_PRICE_PER_MILLION');
+if (!is_numeric($rawPrice) || (float)$rawPrice <= 0) {
+    $price = 2500;
+} else {
+    $price = (float)$rawPrice;
+}
 $priceCcy = $_ENV['DEEPL_PRICE_CCY'] ?? getenv('DEEPL_PRICE_CCY') ?? 'JPY';
 $missing = [];
 if ($apiKey === '') {
