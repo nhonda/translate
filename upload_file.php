@@ -71,29 +71,35 @@ function count_chars_local(string $path): int|false {
     if ($ext === 'txt') {
         $text = @file_get_contents($path);
     } elseif ($ext === 'pdf') {
-        $pdftotext = trim(shell_exec('command -v pdftotext 2>/dev/null'));
-        if ($pdftotext === '') {
-            error_log('pdftotext command not found');
-            return false;
-        }
-        $text = shell_exec(sprintf('%s %s - 2>/dev/null', $pdftotext, escapeshellarg($path)));
-        if ($text === null || trim($text) === '') {
-            $qpdf = trim(shell_exec('command -v qpdf 2>/dev/null'));
-            if ($qpdf !== '') {
-                $tmp = tempnam(sys_get_temp_dir(), 'qpdf_') . '.pdf';
-                shell_exec(sprintf('%s --stream-data=uncompress %s %s 2>/dev/null', $qpdf, escapeshellarg($path), escapeshellarg($tmp)));
-                $text = shell_exec(sprintf('%s %s - 2>/dev/null', $pdftotext, escapeshellarg($tmp)));
-                @unlink($tmp);
+        try {
+            $parser = new \Smalot\PdfParser\Parser();
+            $pdf    = $parser->parseFile($path);
+            $text   = $pdf->getText();
+        } catch (\Throwable $e) {
+            $pdftotext = trim(shell_exec('command -v pdftotext 2>/dev/null'));
+            if ($pdftotext === '') {
+                error_log('PDF parsing failed: ' . $e->getMessage());
+                return false;
             }
-        }
-        if ($text === null || trim($text) === '') {
-            $ocr = trim(shell_exec('command -v ocrmypdf 2>/dev/null'));
-            $tesseract = trim(shell_exec('command -v tesseract 2>/dev/null'));
-            if ($ocr !== '' && $tesseract !== '') {
-                $tmp = tempnam(sys_get_temp_dir(), 'ocr_') . '.pdf';
-                shell_exec(sprintf('%s %s %s 2>/dev/null', $ocr, escapeshellarg($path), escapeshellarg($tmp)));
-                $text = shell_exec(sprintf('%s %s - 2>/dev/null', $pdftotext, escapeshellarg($tmp)));
-                @unlink($tmp);
+            $text = shell_exec(sprintf('%s %s - 2>/dev/null', $pdftotext, escapeshellarg($path)));
+            if ($text === null || trim($text) === '') {
+                $qpdf = trim(shell_exec('command -v qpdf 2>/dev/null'));
+                if ($qpdf !== '') {
+                    $tmp = tempnam(sys_get_temp_dir(), 'qpdf_') . '.pdf';
+                    shell_exec(sprintf('%s --stream-data=uncompress %s %s 2>/dev/null', $qpdf, escapeshellarg($path), escapeshellarg($tmp)));
+                    $text = shell_exec(sprintf('%s %s - 2>/dev/null', $pdftotext, escapeshellarg($tmp)));
+                    @unlink($tmp);
+                }
+            }
+            if ($text === null || trim($text) === '') {
+                $ocr       = trim(shell_exec('command -v ocrmypdf 2>/dev/null'));
+                $tesseract = trim(shell_exec('command -v tesseract 2>/dev/null'));
+                if ($ocr !== '' && $tesseract !== '') {
+                    $tmp = tempnam(sys_get_temp_dir(), 'ocr_') . '.pdf';
+                    shell_exec(sprintf('%s %s %s 2>/dev/null', $ocr, escapeshellarg($path), escapeshellarg($tmp)));
+                    $text = shell_exec(sprintf('%s %s - 2>/dev/null', $pdftotext, escapeshellarg($tmp)));
+                    @unlink($tmp);
+                }
             }
         }
     } elseif ($ext === 'docx') {
