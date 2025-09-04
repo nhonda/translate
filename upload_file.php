@@ -46,20 +46,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $costJpy = round(max(50000, $rawChars) / 1_000_000 * RATE_JPY_PER_MILLION);
                     file_put_contents("$logDir/history.csv", sprintf("%s,%d,%d\n", $filename, $rawChars, time()), FILE_APPEND);
                     $step = 'confirm';
-                    $fmtOptions = [''];
+                    // manage.php の選択肢と統一
+                    $fmtOptions = [];
                     if ($ext === 'txt') {
-                        $fmtOptions[] = 'txt';
-                        $fmtOptions[] = 'pdf';
-                        $fmtOptions[] = 'docx';
-                    } elseif ($ext === 'pdf' || $ext === 'docx' || $ext === 'doc') {
-                        // PDF/DOC/DOCX は PDF / DOCX / TXT
-                        $fmtOptions[] = 'pdf';
-                        $fmtOptions[] = 'docx';
-                        $fmtOptions[] = 'txt';
+                        // TXT は TXT / PDF / DOCX
+                        $fmtOptions = ['txt','pdf','docx'];
+                    } elseif ($ext === 'pdf') {
+                        // PDF は PDF / DOCX
+                        $fmtOptions = ['pdf','docx'];
+                    } elseif ($ext === 'docx' || $ext === 'doc') {
+                        // DOC/DOCX は PDF / DOCX
+                        $fmtOptions = ['pdf','docx'];
                     } elseif ($ext === 'xlsx') {
-                        $fmtOptions[] = 'xlsx';
+                        // XLSX は XLSX のみ
+                        $fmtOptions = ['xlsx'];
                     } elseif ($ext === 'pptx') {
-                        $fmtOptions[] = 'pptx';
+                        // PPTX は PPTX のみ
+                        $fmtOptions = ['pptx'];
                     }
                 }
             }
@@ -222,7 +225,7 @@ function count_chars_local(string $path): int|false {
           <label for="output_format">変換形式：</label>
           <select name="output_format" id="output_format">
             <?php foreach ($fmtOptions as $opt): ?>
-              <option value="<?= h($opt) ?>"><?= h($opt) ?></option>
+              <option value="<?= h($opt) ?>"><?= strtoupper(h($opt)) ?></option>
             <?php endforeach; ?>
           </select>
           <button type="submit">翻訳を開始</button>
