@@ -1,57 +1,60 @@
 # DeepL Translation API Program
 DeepL Translation Tool (PHP)
 
+## 概要
+
+ブラウザから `TXT / PDF / DOCX / XLSX` をアップロードし、DeepL の Document API で翻訳します。アップロード時に概算料金を算出するため、PDF などの文字数はローカルで抽出します（Smalot PDF Parser → pdftotext → qpdf → ocrmypdf+tesseract の順でフォールバック）。
+
+2025-09: PDF の文字数取得において、Smalot が空文字を返すケースでも確実にフォールバックするよう修正しました（以前は例外時のみフォールバック）。
+
 ## 必要条件
 
-- **PHP 8.x**
-- **Composer**
-- **php-zip**（DOCX出力に必須。例: `sudo apt install php8.2-zip`）
-- **pdftotext** と **qpdf**（PDFの文字数取得に使用します。`pdftotext` が見つからない場合は処理が失敗します。抽出が空だった場合は `qpdf --stream-data=uncompress` で再試行します。例: `apt install poppler-utils qpdf`）
-- **ocrmypdf** と **tesseract-ocr**（オプション。`pdftotext` の結果が空だったPDFに自動でOCRを適用するために使用します。例: `apt install ocrmypdf tesseract-ocr`）
-- 以下の Composer パッケージ
-    - [`vlucas/phpdotenv`](https://github.com/vlucas/phpdotenv)
-    - [`mpdf/mpdf`](https://github.com/mpdf/mpdf)
-    - [`phpoffice/phpword`](https://github.com/PHPOffice/PHPWord)
-    - [`phpoffice/phpspreadsheet`](https://github.com/PHPOffice/PhpSpreadsheet)
-    
-- PDF解析には外部ライブラリを使用せず、DeepLの**Document API**を直接利用します。
+- PHP 8.x（例: Ubuntu 22.04 の PHP 8.2）
+- Composer
+- PHP拡張: `mbstring`（文字数カウント）, `zip`（DOCX/XLSXの展開）
+- CLIツール（PDF文字数抽出用）:
+  - `pdftotext`（poppler-utils）
+  - `qpdf`（ストリーム解凍）
+  - `ocrmypdf` と `tesseract-ocr`（OCRフォールバック）
+  - 日本語OCR: `tesseract-ocr-jpn`、必要に応じて `tesseract-ocr-jpn-vert`
+  - 依存: `ghostscript`
+- Composerパッケージ:
+  - `vlucas/phpdotenv`
+  - `mpdf/mpdf`
+  - `phpoffice/phpword`
+  - `phpoffice/phpspreadsheet`
+  - `smalot/pdfparser`（PDFテキスト抽出の第一段階）
 
 ## セットアップ
 
-1. **Composerパッケージのインストール**
+1. Composer 依存のインストール
 
     ```bash
-    composer require vlucas/phpdotenv mpdf/mpdf phpoffice/phpword phpoffice/phpspreadsheet
+    composer install
     ```
 
-    DeepLのDocument APIを直接利用するため、PDF解析用ライブラリは不要です。
-
-2. **php-zip拡張のインストール・有効化**
-
-    例（PHP 8.2の場合）:
+2. PHP拡張（Ubuntu 22.04, PHP 8.2 の例）
 
     ```bash
-    sudo apt install php8.2-zip
-    sudo systemctl restart apache2
+    sudo apt-get update
+    sudo apt-get install -y php8.2-mbstring php8.2-zip
+    # FPM利用時
+    sudo systemctl restart php8.2-fpm
+    # Apache利用時
+    # sudo systemctl restart apache2
     ```
 
-    `php -m | grep zip` で `zip` が表示されればOKです。
-
-3. **pdftotext / qpdf のインストール**
+3. PDF抽出ツールのインストール（Ubuntu 22.04）
 
     ```bash
-    sudo apt install poppler-utils qpdf
+    sudo apt-get install -y poppler-utils qpdf ocrmypdf tesseract-ocr tesseract-ocr-jpn tesseract-ocr-jpn-vert ghostscript
     ```
 
-    PDFの文字数取得に使用します。`pdftotext` が見つからない場合は処理が失敗します。
+4. FPMのPATHとshell_exec確認（FPM利用時）
 
-4. **OCRツールのインストール（オプション）**
-
-    ```bash
-    sudo apt install ocrmypdf tesseract-ocr
-    ```
-
-    `pdftotext` の結果が空だったPDFに自動でOCRを適用します。両方のコマンドが見つからない場合は処理をスキップします。
+    - `/etc/php/8.2/fpm/pool.d/www.conf` に以下を追記し、FPMを再起動
+      - `env[PATH] = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`
+    - `php.ini` の `disable_functions` に `shell_exec` が含まれていないことを確認
 
 5. **.envファイルの作成とAPI設定**
 
@@ -103,11 +106,30 @@ curl -F file=@sample.pdf "$DEEPL_API_BASE/document" \
 
 ## 注意事項
 
-- **DeepL APIでは PDF, DOCX, XLSX の翻訳は1回につき最低50,000文字分がカウントされます。**  
-  テストにはできるだけ `.txt` ファイルを使うことを推奨します。
+- DeepL Document API では PDF/DOCX/XLSX の翻訳は1回につき最低50,000文字分がカウントされます。
+  - 本アプリの見積もりも最小 50,000 文字で計算します。
+  - テストには `.txt` を推奨します。
 - **PDFファイルをアップロードした場合、出力形式はPDFまたはDOCXを選択可能**です。
 - **XLSXファイルをアップロードした場合、出力形式はXLSXのみ選択可能**です。
 - `.env` ファイルの**Webアクセス遮断とパーミッション制御**を必ず行ってください。
+
+## トラブルシューティング
+
+- 文字数の取得に失敗しました（PDF）
+  - `pdftotext` が見つからない/実行不可 → `poppler-utils` を導入、FPMの `PATH` を設定
+  - Smalot で空文字 → 2025-09 修正で `pdftotext → qpdf → ocrmypdf+tesseract` に自動フォールバックします
+  - OCR日本語データ不足 → `tesseract-ocr-jpn`（および `-jpn-vert`）を導入
+  - `disable_functions` に `shell_exec` が含まれている → `php.ini` から除外
+
+- PHP拡張の依存エラー（mbstring/zip）
+  - 稼働中の PHP と同じバージョンでインストール（例: `php8.2-mbstring`）
+
+- FPMサービス名が違う/再起動できない
+  - `systemctl list-unit-files | grep php` で確認。例: `php8.2-fpm`
+
+## 変更履歴（抜粋）
+
+- 2025-09: PDF抽出のフォールバック強化（Smalotが空文字を返した場合もCLI/OCRに自動切替）。
 
 ## 長時間処理のタイムアウト対策
 

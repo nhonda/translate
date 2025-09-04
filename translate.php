@@ -8,17 +8,52 @@ require_once __DIR__ . '/includes/common.php';
 
 use Dotenv\Dotenv;
 
+// Load .env if present
 $dotenv = Dotenv::createImmutable(__DIR__);
 if (file_exists(__DIR__ . '/.env')) {
     $dotenv->load();
 }
-$apiKey  = $_ENV['DEEPL_API_KEY']  ?? getenv('DEEPL_API_KEY')  ?? '';
-$apiBase = rtrim($_ENV['DEEPL_API_BASE'] ?? getenv('DEEPL_API_BASE') ?? '', '/');
+
+// Helper: get first non-empty env value
+function env_non_empty(string $key): string {
+    $candidates = [];
+    if (array_key_exists($key, $_ENV))    { $candidates[] = $_ENV[$key]; }
+    if (array_key_exists($key, $_SERVER)) { $candidates[] = $_SERVER[$key]; }
+    $getenv = getenv($key);
+    if ($getenv !== false) { $candidates[] = $getenv; }
+    foreach ($candidates as $v) {
+        if (is_string($v)) {
+            $t = trim($v);
+            if ($t !== '') return $t;
+        }
+    }
+    return '';
+}
+
+// Prefer first non-empty among supported keys
+$apiKey  = env_non_empty('DEEPL_API_KEY');
+if ($apiKey === '') {
+    $apiKey = env_non_empty('DEEPL_AUTH_KEY');
+}
+$apiBase = rtrim(env_non_empty('DEEPL_API_BASE'), '/');
+$debug   = filter_var(env_non_empty('APP_DEBUG'), FILTER_VALIDATE_BOOLEAN);
+
+// Debug helpers
+function debug_log(string $msg): void {
+    global $debug;
+    if ($debug) {
+        error_log($msg);
+    }
+}
+function redact_url(string $url): string {
+    // Mask auth_key query parameter if present
+    return preg_replace('/(auth_key=)[^&\s]+/i', '$1[REDACTED]', $url);
+}
 $price   = (float)($_ENV['DEEPL_PRICE_PER_MILLION'] ?? getenv('DEEPL_PRICE_PER_MILLION') ?? 25);
 $priceCcy = $_ENV['DEEPL_PRICE_CCY'] ?? getenv('DEEPL_PRICE_CCY') ?? 'USD';
 $missing = [];
 if ($apiKey === '') {
-    $missing[] = 'DEEPL_API_KEY';
+    $missing[] = 'DEEPL_API_KEY/DEEPL_AUTH_KEY';
 }
 if ($apiBase === '') {
     $missing[] = 'DEEPL_API_BASE';
@@ -29,6 +64,10 @@ if ($missing) {
     echo 'DeepL API設定が不足しています';
     exit;
 }
+
+// Debug: 設定確認（キーは末尾のみ表示）
+$maskedTail = $apiKey !== '' ? substr($apiKey, -4) : '';
+debug_log(sprintf('[DeepL] using base=%s key_len=%d key_tail=%s', $apiBase, strlen($apiKey), $maskedTail));
 
 $filename = $_POST['filename'] ?? '';
 $outputFormat = trim($_POST['output_format'] ?? '');
@@ -71,19 +110,29 @@ if ($ext === 'txt') {
         echo 'テキストの読み込みに失敗しました';
         exit;
     }
-    $ch = curl_init($apiBase . '/translate');
+    $translateUrl = $apiBase . '/translate' . '?auth_key=' . rawurlencode($apiKey);
+    debug_log('[DeepL] POST ' . redact_url($translateUrl) . ' (text)');
+    $ch = curl_init($translateUrl);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
-        CURLOPT_POSTFIELDS => http_build_query(['text' => $text, 'target_lang' => 'JA']),
+        // 明示的に auth_key も送る（環境によって Authorization が無視されるのを回避）
+        CURLOPT_POSTFIELDS => http_build_query(['auth_key' => $apiKey, 'text' => $text, 'target_lang' => 'JA']),
         CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT => 60,
     ]);
+    curl_setopt($ch, CURLINFO_HEADER_OUT, true);
     $res  = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $hdrOut = curl_getinfo($ch, CURLINFO_HEADER_OUT);
     $err  = curl_error($ch);
     curl_close($ch);
+    if ($hdrOut) {
+        $redacted = preg_replace('/(Authorization:\s*DeepL-Auth-Key\s+)[^\r\n]+/i', '$1[REDACTED]', $hdrOut);
+        $redacted = preg_replace('/(auth_key=)[^\s&]+/i', '$1[REDACTED]', $redacted);
+        debug_log('[DeepL] request-headers: ' . trim($redacted));
+    }
     if ($res === false || $code >= 400) {
         $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
         error_log("[DeepL] status=$code message=$detail");
@@ -118,10 +167,13 @@ if ($ext === 'txt') {
     $updateProgress(100, '完了');
 } else {
     $updateProgress(10, 'ドキュメントを送信中');
-    $ch = curl_init($apiBase . '/document');
+    $docCreateUrl = $apiBase . '/document' . '?auth_key=' . rawurlencode($apiKey);
+    debug_log('[DeepL] POST ' . redact_url($docCreateUrl) . ' (document)');
+    $ch = curl_init($docCreateUrl);
     $postFields = [
         'file' => new CURLFile($src),
         'target_lang' => 'JA',
+        'auth_key' => $apiKey,
     ];
     if ($ext === 'pdf' && $outputFormat !== '') {
         $postFields['output_format'] = $outputFormat;
@@ -134,10 +186,17 @@ if ($ext === 'txt') {
         CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT => 60,
     ]);
+    curl_setopt($ch, CURLINFO_HEADER_OUT, true);
     $res  = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $hdrOut = curl_getinfo($ch, CURLINFO_HEADER_OUT);
     $err  = curl_error($ch);
     curl_close($ch);
+    if ($hdrOut) {
+        $redacted = preg_replace('/(Authorization:\s*DeepL-Auth-Key\s+)[^\r\n]+/i', '$1[REDACTED]', $hdrOut);
+        $redacted = preg_replace('/(auth_key=)[^\s&]+/i', '$1[REDACTED]', $redacted);
+        debug_log('[DeepL] request-headers: ' . trim($redacted));
+    }
     if ($res === false || $code >= 400) {
         $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
         error_log("[DeepL] status=$code message=$detail");
@@ -156,19 +215,28 @@ if ($ext === 'txt') {
     $updateProgress(30, '翻訳中');
     while (true) {
         usleep(1500000);
-        $ch = curl_init($apiBase . '/document/' . $documentId);
+        $statusUrl = $apiBase . '/document/' . rawurlencode($documentId) . '?auth_key=' . rawurlencode($apiKey);
+        debug_log('[DeepL] POST ' . redact_url($statusUrl) . ' (status)');
+        $ch = curl_init($statusUrl);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
-            CURLOPT_POSTFIELDS => http_build_query(['document_key' => $documentKey]),
+            CURLOPT_POSTFIELDS => http_build_query(['auth_key' => $apiKey, 'document_key' => $documentKey]),
             CURLOPT_CONNECTTIMEOUT => 15,
             CURLOPT_TIMEOUT => 60,
         ]);
+        curl_setopt($ch, CURLINFO_HEADER_OUT, true);
         $res  = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $hdrOut = curl_getinfo($ch, CURLINFO_HEADER_OUT);
         $err  = curl_error($ch);
         curl_close($ch);
+        if ($hdrOut) {
+            $redacted = preg_replace('/(Authorization:\s*DeepL-Auth-Key\s+)[^\r\n]+/i', '$1[REDACTED]', $hdrOut);
+            $redacted = preg_replace('/(auth_key=)[^\s&]+/i', '$1[REDACTED]', $redacted);
+            debug_log('[DeepL] request-headers: ' . trim($redacted));
+        }
         if ($res === false || $code >= 400) {
             $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
             error_log("[DeepL] status=$code message=$detail");
@@ -198,19 +266,28 @@ if ($ext === 'txt') {
         $updateProgress(30, '翻訳中...');
     }
     $updateProgress(80, '結果を取得中');
-    $ch = curl_init($apiBase . '/document/' . $documentId . '/result');
+    $resultUrl = $apiBase . '/document/' . rawurlencode($documentId) . '/result' . '?auth_key=' . rawurlencode($apiKey);
+    debug_log('[DeepL] POST ' . redact_url($resultUrl) . ' (result)');
+    $ch = curl_init($resultUrl);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
-        CURLOPT_POSTFIELDS => http_build_query(['document_key' => $documentKey]),
+        CURLOPT_POSTFIELDS => http_build_query(['auth_key' => $apiKey, 'document_key' => $documentKey]),
         CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT => 60,
     ]);
+    curl_setopt($ch, CURLINFO_HEADER_OUT, true);
     $fileData = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $hdrOut = curl_getinfo($ch, CURLINFO_HEADER_OUT);
     $err  = curl_error($ch);
     curl_close($ch);
+    if ($hdrOut) {
+        $redacted = preg_replace('/(Authorization:\s*DeepL-Auth-Key\s+)[^\r\n]+/i', '$1[REDACTED]', $hdrOut);
+        $redacted = preg_replace('/(auth_key=)[^\s&]+/i', '$1[REDACTED]', $redacted);
+        debug_log('[DeepL] request-headers: ' . trim($redacted));
+    }
     if ($fileData === false || $code >= 400) {
         $detail = $fileData ? (json_decode($fileData, true)['message'] ?? $fileData) : $err;
         error_log("[DeepL] status=$code message=$detail");
