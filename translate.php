@@ -98,14 +98,14 @@ if ($ext === 'txt') {
         echo '翻訳結果の解析に失敗しました';
         exit;
     }
-    $outDir = '/var/www/translate/output';
+    $outDir = __DIR__ . '/downloads';
     if (!is_dir($outDir) && !mkdir($outDir, 0777, true)) {
-        error_log('Failed to create output directory: ' . $outDir);
+        error_log('Failed to create downloads directory: ' . $outDir);
         http_response_code(500);
         echo '出力ディレクトリの作成に失敗しました';
         exit;
     }
-    $outName = pathinfo($filename, PATHINFO_FILENAME) . '-ja.txt';
+    $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.txt';
     $outPath = $outDir . '/' . $outName;
     if (file_put_contents($outPath, $translated) === false) {
         error_log('Failed to save translated file: ' . $outPath);
@@ -218,15 +218,15 @@ if ($ext === 'txt') {
         echo '翻訳結果の取得に失敗しました';
         exit;
     }
-    $outDir = '/var/www/translate/output';
+    $outDir = __DIR__ . '/downloads';
     if (!is_dir($outDir) && !mkdir($outDir, 0777, true)) {
-        error_log('Failed to create output directory: ' . $outDir);
+        error_log('Failed to create downloads directory: ' . $outDir);
         http_response_code(500);
         echo '出力ディレクトリの作成に失敗しました';
         exit;
     }
     $outExt = ($outputFormat === 'docx') ? 'docx' : ($ext === 'doc' ? 'docx' : $ext);
-    $outName = pathinfo($filename, PATHINFO_FILENAME) . '-ja.' . $outExt;
+    $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.' . $outExt;
     $outPath = $outDir . '/' . $outName;
     if (file_put_contents($outPath, $fileData) === false) {
         error_log('Failed to save translated file: ' . $outPath);
@@ -280,7 +280,7 @@ if (!is_dir($logDir) && !mkdir($logDir, 0777, true)) {
   <nav><a href="index.html">トップに戻る</a></nav>
 </header>
 <main class="card">
-  <p><a href="output/<?= h($outName) ?>" download>翻訳結果をダウンロード</a></p>
+  <p><a href="downloads/<?= h($outName) ?>" download>翻訳結果をダウンロード</a></p>
   <p>課金対象文字数: <?= h(number_format($billed)) ?></p>
   <p>概算コスト: <?= h($priceCcy . ' ' . number_format($estCost, 2)) ?></p>
 </main>
