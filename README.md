@@ -5,7 +5,7 @@ DeepL Translation Tool (PHP)
 
 ブラウザから `TXT / PDF / DOCX / XLSX / PPTX` をアップロードし、DeepL の Document API で翻訳します。アップロード時に概算料金を算出するため、PDF などの文字数はローカルで抽出します（Smalot PDF Parser → pdftotext → qpdf → ocrmypdf+tesseract の順でフォールバック）。PPTX はスライドXML/ノートXMLから簡易抽出します。
 
-2025-09: PDF の文字数取得において、Smalot が空文字を返すケースでも確実にフォールバックするよう修正。TXT 入力の出力形式に PDF/DOCX を追加し、PDF/DOC/DOCX 入力でも TXT でダウンロード可能に。PPTX のアップロード/翻訳に対応。
+2025-09: PDF の文字数取得において、Smalot が空文字を返すケースでも確実にフォールバックするよう修正。TXT 入力の出力形式に PDF/DOCX を追加し、PDF/DOC/DOCX 入力でも TXT でダウンロード可能に。PPTX のアップロード/翻訳に対応。さらに、翻訳先の言語選択（日本語/英語）に対応し、出力ファイル名のサフィックス（`_jp` / `_en`）を導入。
 
 ## 必要条件
 
@@ -95,13 +95,24 @@ DeepL Translation Tool (PHP)
 ## 使い方
 
 1. **ファイルをアップロード** – `index.html` から翻訳したいファイル（TXT, PDF, DOCX, XLSX, PPTX）をアップロードします。
-2. **変換形式の選択** – 元形式ごとの出力オプション:
+2. **翻訳先の選択** – 日本語（JA）または英語（EN-US）を選択できます。日本語の原文を英訳したい場合は「英語」を、英語の原文を和訳したい場合は「日本語」を選びます。
+3. **変換形式の選択** – 元形式ごとの出力オプション:
    - TXT: `txt` / `pdf` / `docx`（txt→pdf は mPDF、txt→docx は PHPWord で生成）
    - PDF / DOC / DOCX: `pdf` / `docx` / `txt`（`txt` は DeepL で `docx` を取得後にサーバ側でテキスト抽出）
    - XLSX: `xlsx`
    - PPTX: `pptx`
-3. **DeepLへ送信** – アップロードされたファイルを DeepL の Document API に送信して翻訳します。
-4. **出力保存・リンク表示** – 翻訳結果は `downloads/` ディレクトリに保存され、ダウンロードリンクが表示されます。
+4. **DeepLへ送信** – アップロードされたファイルを DeepL の Document API に送信して翻訳します。
+5. **出力保存・リンク表示** – 翻訳結果は `downloads/` ディレクトリに保存され、ダウンロードリンクが表示されます。
+
+### 言語とファイル名の規約
+
+- 生成ファイル名は、翻訳先に応じてベース名にサフィックスを付与します。
+  - 日本語に翻訳: `*_jp.<ext>`
+  - 英語に翻訳: `*_en.<ext>`
+- `downloads.php` の一覧と文字数集計は、`_jp` と `_en` のサフィックスを無視して同一ベース名として扱います。
+- 「ファイル管理」からの削除は、同じベース名の `_jp` と `_en` 出力をまとめて削除します。
+
+補足: 英語は既定で EN-US 方言を使用します。必要に応じてコード（`translate.php`）は EN-GB も受け付けます。
 
 ## ディレクトリ構成
 
@@ -118,7 +129,7 @@ curl -F file=@sample.pdf "$DEEPL_API_BASE/document" \
 
 ## 注意事項
 
-- DeepL Document API では PDF/DOCX/XLSX/PPTX の翻訳は1回につき最低50,000文字分がカウントされます。
+- DeepL Document API では PDF/DOCX/XLSX の翻訳は1回につき最低50,000文字分がカウントされます。
   - 本アプリの見積もりも最小 50,000 文字で計算します。
   - テストには `.txt` を推奨します。
 - **PDFファイルをアップロードした場合、出力形式はPDF/DOCX/TXTを選択可能**です。
@@ -152,6 +163,8 @@ curl -F file=@sample.pdf "$DEEPL_API_BASE/document" \
   - PDF抽出のフォールバック強化（Smalotが空文字を返した場合もCLI/OCRに自動切替）
   - TXT入力での PDF/DOCX 出力、PDF/DOC/DOCX 入力での TXT 出力に対応
   - PPTX のアップロード/翻訳対応、文字数カウント追加
+  - 翻訳先の言語選択（日本語/英語）に対応、出力ファイル名に `_jp` / `_en` を付与
+  - ダウンロード一覧と削除ロジックを `_jp` / `_en` の両方に対応
 
 ## 長時間処理のタイムアウト対策
 

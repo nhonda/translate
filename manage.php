@@ -23,9 +23,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($target !== false && strpos($target, $uploadsDir . DIRECTORY_SEPARATOR) === 0 && is_file($target)) {
             unlink($target);
             $base = pathinfo($filename, PATHINFO_FILENAME);
-            foreach (glob(__DIR__ . "/downloads/{$base}_jp.*") as $translated) {
-                if (is_file($translated)) {
-                    unlink($translated);
+            foreach (["{$base}_jp.*", "{$base}_en.*"] as $pattern) {
+                foreach (glob(__DIR__ . "/downloads/{$pattern}") as $translated) {
+                    if (is_file($translated)) {
+                        unlink($translated);
+                    }
                 }
             }
             $historyFile = __DIR__ . '/logs/history.csv';
@@ -198,6 +200,10 @@ function cost_jpy(int $c): int {
               <!-- 翻訳再実行form -->
               <form method="post" action="translate.php" class="translate-form">
                 <input type="hidden" name="filename" value="<?= h($f) ?>">
+                <select name="target_lang">
+                  <option value="JA">日本語</option>
+                  <option value="EN-US">英語</option>
+                </select>
                 <?php
                   $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
                   $fmtOptions = [];

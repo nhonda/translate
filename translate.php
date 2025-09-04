@@ -71,6 +71,14 @@ debug_log(sprintf('[DeepL] using base=%s key_len=%d key_tail=%s', $apiBase, strl
 
 $filename = $_POST['filename'] ?? '';
 $outputFormat = trim($_POST['output_format'] ?? '');
+$targetLangIn = strtoupper(trim($_POST['target_lang'] ?? ''));
+// Normalize and validate target language
+if ($targetLangIn === 'EN') { $targetLangIn = 'EN-US'; }
+if (!in_array($targetLangIn, ['JA','EN-US','EN-GB'], true)) {
+    $targetLangIn = 'JA';
+}
+$targetLang = $targetLangIn;
+$suffix = ($targetLang === 'JA') ? 'jp' : 'en';
 $outputFormat = in_array($outputFormat, ['pdf', 'docx', 'txt'], true) ? $outputFormat : '';
 $src = __DIR__ . '/uploads/' . basename($filename);
 if ($filename === '' || !is_file($src)) {
@@ -118,7 +126,7 @@ if ($ext === 'txt') {
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
         // 明示的に auth_key も送る（環境によって Authorization が無視されるのを回避）
-        CURLOPT_POSTFIELDS => http_build_query(['auth_key' => $apiKey, 'text' => $text, 'target_lang' => 'JA']),
+        CURLOPT_POSTFIELDS => http_build_query(['auth_key' => $apiKey, 'text' => $text, 'target_lang' => $targetLang]),
         CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT => 60,
     ]);
@@ -157,7 +165,7 @@ if ($ext === 'txt') {
     // Decide output format for TXT uploads (txt/pdf/docx)
     $selected = $outputFormat !== '' ? $outputFormat : 'txt';
     if ($selected === 'pdf') {
-        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.pdf';
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_' . $suffix . '.pdf';
         $outPath = $outDir . '/' . $outName;
         try {
             $mpdf = new \Mpdf\Mpdf(['tempDir' => sys_get_temp_dir(), 'mode' => 'utf-8']);
@@ -171,7 +179,7 @@ if ($ext === 'txt') {
             exit;
         }
     } elseif ($selected === 'docx') {
-        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.docx';
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_' . $suffix . '.docx';
         $outPath = $outDir . '/' . $outName;
         try {
             $phpWord = new \PhpOffice\PhpWord\PhpWord();
@@ -188,7 +196,7 @@ if ($ext === 'txt') {
             exit;
         }
     } else { // txt
-        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.txt';
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_' . $suffix . '.txt';
         $outPath = $outDir . '/' . $outName;
         if (file_put_contents($outPath, $translated) === false) {
             error_log('Failed to save translated file: ' . $outPath);
@@ -207,7 +215,7 @@ if ($ext === 'txt') {
     $ch = curl_init($docCreateUrl);
     $postFields = [
         'file' => new CURLFile($src),
-        'target_lang' => 'JA',
+        'target_lang' => $targetLang,
         'auth_key' => $apiKey,
     ];
     // Decide DeepL output format: allow 'pdf' or 'docx'. For 'txt', request 'docx' then flatten to text after.
@@ -355,7 +363,7 @@ if ($ext === 'txt') {
             exit;
         }
         $outExt = 'txt';
-        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.' . $outExt;
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_' . $suffix . '.' . $outExt;
         $outPath = $outDir . '/' . $outName;
         $extracted = '';
         $zip = new ZipArchive();
@@ -381,7 +389,7 @@ if ($ext === 'txt') {
         }
     } else {
         $outExt = ($outputFormat === 'docx') ? 'docx' : ($outputFormat === 'pdf' ? 'pdf' : ($ext === 'doc' ? 'docx' : $ext));
-        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.' . $outExt;
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_' . $suffix . '.' . $outExt;
         $outPath = $outDir . '/' . $outName;
         if (file_put_contents($outPath, $fileData) === false) {
             error_log('Failed to save translated file: ' . $outPath);

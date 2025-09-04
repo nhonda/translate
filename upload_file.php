@@ -222,6 +222,11 @@ function count_chars_local(string $path): int|false {
         <p>概算コスト：￥<?= h(number_format($costJpy)) ?></p>
         <form id="translateForm" action="translate.php" method="post">
           <input type="hidden" name="filename" value="<?= h($filename) ?>">
+          <label for="target_lang">翻訳先：</label>
+          <select name="target_lang" id="target_lang">
+            <option value="JA">日本語</option>
+            <option value="EN-US">英語</option>
+          </select>
           <label for="output_format">変換形式：</label>
           <select name="output_format" id="output_format">
             <?php foreach ($fmtOptions as $opt): ?>

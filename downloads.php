@@ -42,8 +42,8 @@ usort($allFiles, function($a, $b) use ($sort, $dir, $history) {
     case 'mtime':
       return filemtime($dir . '/' . $b) <=> filemtime($dir . '/' . $a);
     case 'chars':
-      $baseA = preg_replace('/_jp$/', '', pathinfo($a, PATHINFO_FILENAME));
-      $baseB = preg_replace('/_jp$/', '', pathinfo($b, PATHINFO_FILENAME));
+      $baseA = preg_replace('/_(jp|en)$/', '', pathinfo($a, PATHINFO_FILENAME));
+      $baseB = preg_replace('/_(jp|en)$/', '', pathinfo($b, PATHINFO_FILENAME));
       $charA = isset($history[$baseA]) ? ($history[$baseA]['billed'] ?? -1) : -1;
       $charB = isset($history[$baseB]) ? ($history[$baseB]['billed'] ?? -1) : -1;
       return $charB <=> $charA;
@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <tbody>
           <?php foreach ($files as $f): ?>
             <?php
-              $base = preg_replace('/_jp$/', '', pathinfo($f, PATHINFO_FILENAME));
+              $base = preg_replace('/_(jp|en)$/', '', pathinfo($f, PATHINFO_FILENAME));
               $entry = $history[$base] ?? null;
               if ($entry !== null) {
                 $raw = (int)($entry['raw'] ?? 0);
