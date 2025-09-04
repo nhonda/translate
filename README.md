@@ -6,8 +6,8 @@ DeepL Translation Tool (PHP)
 - **PHP 8.x**
 - **Composer**
 - **php-zip**（DOCX出力に必須。例: `sudo apt install php8.2-zip`）
-- **pdftotext** と **qpdf**（PDF文字数見積もりのみに使用。コスト見積もりを行わない場合は不要。例: `apt install poppler-utils qpdf`）
-- **ocrmypdf** と **tesseract-ocr**（オプション。標準のテキスト抽出が空だったPDFに自動でOCRを適用するために使用。例: `apt install ocrmypdf tesseract-ocr`）
+- **pdftotext** と **qpdf**（PDFの文字数取得に使用します。`pdftotext` が見つからない場合は処理が失敗します。抽出が空だった場合は `qpdf --stream-data=uncompress` で再試行します。例: `apt install poppler-utils qpdf`）
+- **ocrmypdf** と **tesseract-ocr**（オプション。`pdftotext` の結果が空だったPDFに自動でOCRを適用するために使用します。例: `apt install ocrmypdf tesseract-ocr`）
 - 以下の Composer パッケージ
     - [`vlucas/phpdotenv`](https://github.com/vlucas/phpdotenv)
     - [`mpdf/mpdf`](https://github.com/mpdf/mpdf)
@@ -37,15 +37,23 @@ DeepL Translation Tool (PHP)
 
     `php -m | grep zip` で `zip` が表示されればOKです。
 
-3. **OCRツールのインストール（オプション）**
+3. **pdftotext / qpdf のインストール**
+
+    ```bash
+    sudo apt install poppler-utils qpdf
+    ```
+
+    PDFの文字数取得に使用します。`pdftotext` が見つからない場合は処理が失敗します。
+
+4. **OCRツールのインストール（オプション）**
 
     ```bash
     sudo apt install ocrmypdf tesseract-ocr
     ```
 
-    標準のテキスト抽出が空だったPDFに自動でOCRを適用します。両方のコマンドが見つからない場合は処理をスキップします。
+    `pdftotext` の結果が空だったPDFに自動でOCRを適用します。両方のコマンドが見つからない場合は処理をスキップします。
 
-4. **.envファイルの作成とAPI設定**
+5. **.envファイルの作成とAPI設定**
 
     プロジェクトルート直下に`.env`ファイルを作成し、下記のように記述します（実際の値に置き換えてください）。
 
@@ -57,7 +65,7 @@ DeepL Translation Tool (PHP)
     - `DEEPL_API_KEY` : DeepLの認証キー。
     - `DEEPL_API_BASE` : Document API のエンドポイント。Proプランの場合は `https://api.deepl.com/v2` を指定します。
 
-5. **.envファイルのセキュリティ対策**
+6. **.envファイルのセキュリティ対策**
 
     `.env` ファイルはWebからのアクセスを禁止してください。  
     プロジェクトルート直下に**.htaccess**を作成し、以下の内容を記載します。
@@ -70,7 +78,7 @@ DeepL Translation Tool (PHP)
 
     `.env` のパーミッションは `-r--------`（所有者のみ読み取り可）としてください。
 
-6. **フォントの配置（日本語PDF出力用）**
+7. **フォントの配置（日本語PDF出力用）**
 
     - `fonts` ディレクトリを作成し、`ipaexg.ttf` など日本語対応TrueTypeフォントを配置してください。
 
