@@ -11,7 +11,18 @@ if (($h = fopen(__DIR__ . '/logs/history.csv', 'r'))) {
     if (count($row) < 2) continue;
     [$fn, $chars] = $row;
     $base = pathinfo($fn, PATHINFO_FILENAME);
-    $history[$base] = (int)$chars;
+    $val = (int)$chars;
+    if (!isset($history[$base])) {
+      // Initialize with both raw and billed perspectives
+      $history[$base] = [
+        'raw' => $val,
+        'billed' => max(50000, $val),
+      ];
+    } else {
+      // Keep the smallest as raw (from upload count), and the largest (>=50k) as billed
+      $history[$base]['raw'] = min($history[$base]['raw'], $val);
+      $history[$base]['billed'] = max($history[$base]['billed'], max(50000, $val));
+    }
   }
   fclose($h);
 }
@@ -33,10 +44,8 @@ usort($allFiles, function($a, $b) use ($sort, $dir, $history) {
     case 'chars':
       $baseA = preg_replace('/_jp$/', '', pathinfo($a, PATHINFO_FILENAME));
       $baseB = preg_replace('/_jp$/', '', pathinfo($b, PATHINFO_FILENAME));
-      $charA = $history[$baseA] ?? null;
-      $charB = $history[$baseB] ?? null;
-      $charA = $charA !== null ? max(50000, $charA) : -1;
-      $charB = $charB !== null ? max(50000, $charB) : -1;
+      $charA = isset($history[$baseA]) ? ($history[$baseA]['billed'] ?? -1) : -1;
+      $charB = isset($history[$baseB]) ? ($history[$baseB]['billed'] ?? -1) : -1;
       return $charB <=> $charA;
     case 'ext':
       return strcasecmp(pathinfo($a, PATHINFO_EXTENSION), pathinfo($b, PATHINFO_EXTENSION));
@@ -125,14 +134,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php foreach ($files as $f): ?>
             <?php
               $base = preg_replace('/_jp$/', '', pathinfo($f, PATHINFO_FILENAME));
-              $chars = $history[$base] ?? null;
-              if ($chars !== null) {
-                $displayChars = max(50000, $chars);
-                $charDisp = number_format($displayChars);
-                if ($displayChars !== $chars) {
-                  $charDisp .= ' (' . number_format($chars) . ')';
+              $entry = $history[$base] ?? null;
+              if ($entry !== null) {
+                $raw = (int)($entry['raw'] ?? 0);
+                $billed = (int)($entry['billed'] ?? max(50000, $raw));
+                $charDisp = number_format($billed);
+                if ($billed !== $raw && $raw > 0) {
+                  $charDisp .= ' (' . number_format($raw) . ')';
                 }
-                $costDisp = '¥' . number_format(cost_jpy($chars));
+                $costDisp = '¥' . number_format(cost_jpy($billed));
               } else {
                 $charDisp = '未計測';
                 $costDisp = '未計測';

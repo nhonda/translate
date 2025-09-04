@@ -59,18 +59,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $history = [];
-$totalChars = 0; // 50,000文字未満でも50,000文字としてカウントした合計
-$totalActualChars = 0; // 実際の文字数合計
-$totalCost = 0;
 if (($h = fopen(__DIR__ . '/logs/history.csv', 'r'))) {
     while (($row = fgetcsv($h)) !== false) {
         if (count($row) < 2) continue;
         [$fn, $chars] = $row;
-        $chars = (int)$chars;
-        $history[$fn] = $chars;
-        $totalActualChars += $chars;
-        $totalChars += max(50000, $chars);
-        $totalCost += cost_jpy($chars);
+        $val = (int)$chars;
+        if (!isset($history[$fn])) {
+            $history[$fn] = [
+                'raw' => $val,
+                'billed' => max(50000, $val),
+            ];
+        } else {
+            $history[$fn]['raw'] = min($history[$fn]['raw'], $val);
+            $history[$fn]['billed'] = max($history[$fn]['billed'], max(50000, $val));
+        }
     }
     fclose($h);
 }
@@ -86,10 +88,10 @@ usort($allFiles, function($a, $b) use ($sort, $uploadsDir, $history) {
         case 'mtime':
             return filemtime($uploadsDir . '/' . $b) <=> filemtime($uploadsDir . '/' . $a);
         case 'size':
-            $sizeA = $history[$a] ?? null;
-            $sizeB = $history[$b] ?? null;
-            $sizeA = $sizeA !== null ? max(50000, $sizeA) : (int)filesize($uploadsDir . '/' . $a);
-            $sizeB = $sizeB !== null ? max(50000, $sizeB) : (int)filesize($uploadsDir . '/' . $b);
+            $sizeA = isset($history[$a]) ? ($history[$a]['billed'] ?? null) : null;
+            $sizeB = isset($history[$b]) ? ($history[$b]['billed'] ?? null) : null;
+            $sizeA = $sizeA !== null ? $sizeA : (int)filesize($uploadsDir . '/' . $a);
+            $sizeB = $sizeB !== null ? $sizeB : (int)filesize($uploadsDir . '/' . $b);
             return $sizeB <=> $sizeA;
         case 'ext':
             return strcasecmp(pathinfo($a, PATHINFO_EXTENSION), pathinfo($b, PATHINFO_EXTENSION));
@@ -173,14 +175,15 @@ function cost_jpy(int $c): int {
       <tbody>
       <?php foreach ($files as $f): ?>
         <?php
-          $chars = $history[$f] ?? null;
-          if ($chars !== null) {
-            $displayChars = max(50000, $chars);
-            $charDisp = number_format($displayChars);
-            if ($displayChars !== $chars) {
-              $charDisp .= ' (' . number_format($chars) . ')';
+          $entry = $history[$f] ?? null;
+          if ($entry !== null) {
+            $raw = (int)($entry['raw'] ?? 0);
+            $billed = (int)($entry['billed'] ?? max(50000, $raw));
+            $charDisp = number_format($billed);
+            if ($billed !== $raw && $raw > 0) {
+              $charDisp .= ' (' . number_format($raw) . ')';
             }
-            $costDisp = '¥' . number_format(cost_jpy($chars));
+            $costDisp = '¥' . number_format(cost_jpy($billed));
           } else {
             $charDisp = '未計測';
             $costDisp = '未計測';
@@ -214,10 +217,20 @@ function cost_jpy(int $c): int {
         </tr>
       <?php endforeach; ?>
       <?php
-        $summaryDisp = number_format($totalChars);
-        if ($totalChars !== $totalActualChars) {
-          $summaryDisp .= ' (' . number_format($totalActualChars) . ')';
+        // ページ全体の合計（billed と raw）を再計算
+        $sumBilled = 0;
+        $sumRaw = 0;
+        foreach ($allFiles as $uf) {
+          if (isset($history[$uf])) {
+            $sumBilled += (int)($history[$uf]['billed'] ?? 0);
+            $sumRaw    += (int)($history[$uf]['raw'] ?? 0);
+          }
         }
+        $summaryDisp = number_format($sumBilled);
+        if ($sumBilled !== $sumRaw && $sumRaw > 0) {
+          $summaryDisp .= ' (' . number_format($sumRaw) . ')';
+        }
+        $totalCost = cost_jpy($sumBilled);
       ?>
       <tr class="summary-row">
         <td>合計</td>
