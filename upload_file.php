@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!move_uploaded_file($_FILES['file']['tmp_name'], $dest)) {
             $message = 'ファイルの保存に失敗しました';
         } else {
-            $allowed = ['txt','pdf','docx','xlsx'];
+            $allowed = ['txt','pdf','docx','xlsx','pptx'];
             if (!in_array($ext, $allowed, true)) {
                 unlink($dest);
                 $message = '非対応形式';
@@ -47,14 +47,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     file_put_contents("$logDir/history.csv", sprintf("%s,%d,%d\n", $filename, $rawChars, time()), FILE_APPEND);
                     $step = 'confirm';
                     $fmtOptions = [''];
-                    if ($ext === 'pdf' || $ext === 'txt') {
+                    if ($ext === 'txt') {
+                        $fmtOptions[] = 'txt';
                         $fmtOptions[] = 'pdf';
                         $fmtOptions[] = 'docx';
-                    } elseif ($ext === 'docx') {
+                    } elseif ($ext === 'pdf' || $ext === 'docx' || $ext === 'doc') {
+                        // PDF/DOC/DOCX は PDF / DOCX / TXT
                         $fmtOptions[] = 'pdf';
                         $fmtOptions[] = 'docx';
+                        $fmtOptions[] = 'txt';
                     } elseif ($ext === 'xlsx') {
                         $fmtOptions[] = 'xlsx';
+                    } elseif ($ext === 'pptx') {
+                        $fmtOptions[] = 'pptx';
                     }
                 }
             }
@@ -124,6 +129,32 @@ function count_chars_local(string $path): int|false {
             if ($xml !== false) {
                 $text = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
             }
+        }
+    } elseif ($ext === 'pptx') {
+        $zip = new ZipArchive();
+        if ($zip->open($path) === true) {
+            $texts = [];
+            // Collect text from slides
+            for ($i = 1; $i <= 200; $i++) {
+                $name = sprintf('ppt/slides/slide%d.xml', $i);
+                $xml = $zip->getFromName($name);
+                if ($xml === false) {
+                    if ($i === 1) {
+                        // If first slide not found, likely no more slides
+                    }
+                    break;
+                }
+                $texts[] = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+            }
+            // Optionally include notes if present
+            for ($i = 1; $i <= 200; $i++) {
+                $name = sprintf('ppt/notesSlides/notesSlide%d.xml', $i);
+                $xml = $zip->getFromName($name);
+                if ($xml === false) break;
+                $texts[] = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+            }
+            $zip->close();
+            $text = trim(implode("\n", array_filter($texts)));
         }
     }
     if (!is_string($text)) {

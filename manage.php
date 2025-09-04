@@ -198,12 +198,33 @@ function cost_jpy(int $c): int {
               <!-- 翻訳再実行form -->
               <form method="post" action="translate.php" class="translate-form">
                 <input type="hidden" name="filename" value="<?= h($f) ?>">
-
-                <select name="output_format">
-                  <option value="pdf">PDF</option>
-                  <option value="docx">DOCX</option>
-                  <option value="xlsx">XLSX</option>
-                </select>
+                <?php
+                  $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
+                  $fmtOptions = [];
+                  if ($ext === 'pdf') {
+                    // PDF は PDF または DOCX のみ
+                    $fmtOptions = ['pdf','docx'];
+                  } elseif ($ext === 'docx' || $ext === 'doc') {
+                    // DOC/DOCX は DOCX または PDF
+                    $fmtOptions = ['pdf','docx'];
+                  } elseif ($ext === 'xlsx') {
+                    // XLSX は XLSX のみ
+                    $fmtOptions = ['xlsx'];
+                  } elseif ($ext === 'pptx') {
+                    // PPTX は PPTX のみ
+                    $fmtOptions = ['pptx'];
+                  } elseif ($ext === 'txt') {
+                    // TXT は TXT / PDF / DOCX
+                    $fmtOptions = ['txt','pdf','docx'];
+                  }
+                ?>
+                <?php if (!empty($fmtOptions)): ?>
+                  <select name="output_format">
+                    <?php foreach ($fmtOptions as $opt): ?>
+                      <option value="<?= h($opt) ?>"><?= strtoupper(h($opt)) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                <?php endif; ?>
                 <button type="submit">翻訳再実行</button>
               </form>
               <!-- 削除form（ボタンで即時削除） -->

@@ -71,7 +71,7 @@ debug_log(sprintf('[DeepL] using base=%s key_len=%d key_tail=%s', $apiBase, strl
 
 $filename = $_POST['filename'] ?? '';
 $outputFormat = trim($_POST['output_format'] ?? '');
-$outputFormat = in_array($outputFormat, ['pdf', 'docx'], true) ? $outputFormat : '';
+$outputFormat = in_array($outputFormat, ['pdf', 'docx', 'txt'], true) ? $outputFormat : '';
 $src = __DIR__ . '/uploads/' . basename($filename);
 if ($filename === '' || !is_file($src)) {
     http_response_code(400);
@@ -154,13 +154,48 @@ if ($ext === 'txt') {
         echo '出力ディレクトリの作成に失敗しました';
         exit;
     }
-    $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.txt';
-    $outPath = $outDir . '/' . $outName;
-    if (file_put_contents($outPath, $translated) === false) {
-        error_log('Failed to save translated file: ' . $outPath);
-        http_response_code(500);
-        echo '翻訳結果の保存に失敗しました';
-        exit;
+    // Decide output format for TXT uploads (txt/pdf/docx)
+    $selected = $outputFormat !== '' ? $outputFormat : 'txt';
+    if ($selected === 'pdf') {
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.pdf';
+        $outPath = $outDir . '/' . $outName;
+        try {
+            $mpdf = new \Mpdf\Mpdf(['tempDir' => sys_get_temp_dir(), 'mode' => 'utf-8']);
+            $html = nl2br(htmlspecialchars($translated, ENT_QUOTES, 'UTF-8'));
+            $mpdf->WriteHTML($html);
+            $mpdf->Output($outPath, 'F');
+        } catch (\Throwable $e) {
+            error_log('Failed to generate PDF: ' . $e->getMessage());
+            http_response_code(500);
+            echo 'PDF生成に失敗しました';
+            exit;
+        }
+    } elseif ($selected === 'docx') {
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.docx';
+        $outPath = $outDir . '/' . $outName;
+        try {
+            $phpWord = new \PhpOffice\PhpWord\PhpWord();
+            $section = $phpWord->addSection();
+            foreach (preg_split("/\r?\n/", $translated) as $line) {
+                $section->addText($line);
+            }
+            $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+            $writer->save($outPath);
+        } catch (\Throwable $e) {
+            error_log('Failed to generate DOCX: ' . $e->getMessage());
+            http_response_code(500);
+            echo 'DOCX生成に失敗しました';
+            exit;
+        }
+    } else { // txt
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.txt';
+        $outPath = $outDir . '/' . $outName;
+        if (file_put_contents($outPath, $translated) === false) {
+            error_log('Failed to save translated file: ' . $outPath);
+            http_response_code(500);
+            echo '翻訳結果の保存に失敗しました';
+            exit;
+        }
     }
     $billed = mb_strlen($text);
     $estCost = $billed / 1000000 * $price;
@@ -175,8 +210,15 @@ if ($ext === 'txt') {
         'target_lang' => 'JA',
         'auth_key' => $apiKey,
     ];
-    if ($ext === 'pdf' && $outputFormat !== '') {
-        $postFields['output_format'] = $outputFormat;
+    // Decide DeepL output format: allow 'pdf' or 'docx'. For 'txt', request 'docx' then flatten to text after.
+    $deeplFormat = '';
+    if (in_array($outputFormat, ['pdf','docx'], true)) {
+        $deeplFormat = $outputFormat;
+    } elseif ($outputFormat === 'txt') {
+        $deeplFormat = 'docx';
+    }
+    if ($deeplFormat !== '') {
+        $postFields['output_format'] = $deeplFormat;
     }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -302,14 +344,51 @@ if ($ext === 'txt') {
         echo '出力ディレクトリの作成に失敗しました';
         exit;
     }
-    $outExt = ($outputFormat === 'docx') ? 'docx' : ($ext === 'doc' ? 'docx' : $ext);
-    $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.' . $outExt;
-    $outPath = $outDir . '/' . $outName;
-    if (file_put_contents($outPath, $fileData) === false) {
-        error_log('Failed to save translated file: ' . $outPath);
-        http_response_code(500);
-        echo '翻訳結果の保存に失敗しました';
-        exit;
+    // Save or convert result depending on requested output
+    if ($outputFormat === 'txt') {
+        // Save temp DOCX and extract plain text
+        $tmpDocx = tempnam(sys_get_temp_dir(), 'deepl_') . '.docx';
+        if (file_put_contents($tmpDocx, $fileData) === false) {
+            error_log('Failed to save temp DOCX for TXT extraction');
+            http_response_code(500);
+            echo '一時ファイルの保存に失敗しました';
+            exit;
+        }
+        $outExt = 'txt';
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.' . $outExt;
+        $outPath = $outDir . '/' . $outName;
+        $extracted = '';
+        $zip = new ZipArchive();
+        if ($zip->open($tmpDocx) === true) {
+            $xml = $zip->getFromName('word/document.xml');
+            $zip->close();
+            if ($xml !== false) {
+                $extracted = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+            }
+        }
+        @unlink($tmpDocx);
+        if (trim((string)$extracted) === '') {
+            error_log('Failed to extract text from translated DOCX');
+            http_response_code(500);
+            echo 'TXT変換に失敗しました';
+            exit;
+        }
+        if (file_put_contents($outPath, $extracted) === false) {
+            error_log('Failed to save TXT output: ' . $outPath);
+            http_response_code(500);
+            echo '翻訳結果の保存に失敗しました';
+            exit;
+        }
+    } else {
+        $outExt = ($outputFormat === 'docx') ? 'docx' : ($outputFormat === 'pdf' ? 'pdf' : ($ext === 'doc' ? 'docx' : $ext));
+        $outName = pathinfo($filename, PATHINFO_FILENAME) . '_jp.' . $outExt;
+        $outPath = $outDir . '/' . $outName;
+        if (file_put_contents($outPath, $fileData) === false) {
+            error_log('Failed to save translated file: ' . $outPath);
+            http_response_code(500);
+            echo '翻訳結果の保存に失敗しました';
+            exit;
+        }
     }
     $updateProgress(100, '完了');
 }
