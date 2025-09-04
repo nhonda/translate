@@ -42,10 +42,12 @@ usort($allFiles, function($a, $b) use ($sort, $dir, $history) {
     case 'mtime':
       return filemtime($dir . '/' . $b) <=> filemtime($dir . '/' . $a);
     case 'chars':
-      $baseA = preg_replace('/_(jp|en)$/', '', pathinfo($a, PATHINFO_FILENAME));
-      $baseB = preg_replace('/_(jp|en)$/', '', pathinfo($b, PATHINFO_FILENAME));
-      $charA = isset($history[$baseA]) ? ($history[$baseA]['billed'] ?? -1) : -1;
-      $charB = isset($history[$baseB]) ? ($history[$baseB]['billed'] ?? -1) : -1;
+      $baseFullA = pathinfo($a, PATHINFO_FILENAME);
+      $baseFullB = pathinfo($b, PATHINFO_FILENAME);
+      $baseA = preg_replace('/(_(jp|en))+$/i', '', $baseFullA);
+      $baseB = preg_replace('/(_(jp|en))+$/i', '', $baseFullB);
+      $charA = isset($history[$baseA]) ? ($history[$baseA]['billed'] ?? -1) : (isset($history[$baseFullA]) ? ($history[$baseFullA]['billed'] ?? -1) : -1);
+      $charB = isset($history[$baseB]) ? ($history[$baseB]['billed'] ?? -1) : (isset($history[$baseFullB]) ? ($history[$baseFullB]['billed'] ?? -1) : -1);
       return $charB <=> $charA;
     case 'ext':
       return strcasecmp(pathinfo($a, PATHINFO_EXTENSION), pathinfo($b, PATHINFO_EXTENSION));
@@ -66,6 +68,71 @@ $files = array_slice($allFiles, $offset, $limit);
 
 function cost_jpy(int $c): int {
   return (int)round(max(50000, $c) / 1_000_000 * RATE_JPY_PER_MILLION);
+}
+
+// 軽量な原文文字数カウント（表示補完用）
+function count_chars_light_local(string $path): int|false {
+  if (!is_file($path)) return false;
+  $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+  $text = '';
+  if ($ext === 'txt') {
+    $text = @file_get_contents($path) ?: '';
+  } elseif ($ext === 'docx') {
+    $zip = new ZipArchive();
+    if ($zip->open($path) === true) {
+      $xml = $zip->getFromName('word/document.xml');
+      $zip->close();
+      if ($xml !== false) {
+        $text = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+      }
+    }
+  } elseif ($ext === 'xlsx') {
+    $zip = new ZipArchive();
+    if ($zip->open($path) === true) {
+      $bufs = [];
+      $xml = $zip->getFromName('xl/sharedStrings.xml');
+      if ($xml !== false) {
+        $bufs[] = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+      }
+      for ($i = 1; $i <= 200; $i++) {
+        $sheetName = sprintf('xl/worksheets/sheet%d.xml', $i);
+        $sx = $zip->getFromName($sheetName);
+        if ($sx === false) { if ($i === 1) {} break; }
+        if (preg_match_all('/<c[^>]*t="inlineStr"[^>]*>.*?<is>(.*?)<\/is>.*?<\/c>/si', $sx, $m)) {
+          foreach ($m[1] as $frag) {
+            if (preg_match_all('/<t[^>]*>(.*?)<\/t>/si', $frag, $mt)) {
+              foreach ($mt[1] as $t) {
+                $bufs[] = html_entity_decode($t, ENT_QUOTES | ENT_XML1, 'UTF-8');
+              }
+            } else {
+              $bufs[] = html_entity_decode(strip_tags($frag), ENT_QUOTES | ENT_XML1, 'UTF-8');
+            }
+          }
+        }
+      }
+      $zip->close();
+      $text = trim(implode("\n", array_filter($bufs)));
+    }
+  } elseif ($ext === 'pptx') {
+    $zip = new ZipArchive();
+    if ($zip->open($path) === true) {
+      $bufs = [];
+      for ($i = 1; $i <= 200; $i++) {
+        $name = sprintf('ppt/slides/slide%d.xml', $i);
+        $xml = $zip->getFromName($name);
+        if ($xml === false) break;
+        $bufs[] = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+      }
+      $zip->close();
+      $text = trim(implode("\n", $bufs));
+    }
+  } else {
+    return false;
+  }
+  if (!is_string($text)) return false;
+  $text = trim($text);
+  if ($text === '') return false;
+  return mb_strlen($text, 'UTF-8');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -133,20 +200,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <tbody>
           <?php foreach ($files as $f): ?>
             <?php
-              $base = preg_replace('/_(jp|en)$/', '', pathinfo($f, PATHINFO_FILENAME));
-              $entry = $history[$base] ?? null;
+              $baseFull = pathinfo($f, PATHINFO_FILENAME);
+              $base = preg_replace('/(_(jp|en))+$/i', '', $baseFull);
+              $entry = $history[$base] ?? ($history[$baseFull] ?? null);
+              $raw = 0;
+              $billed = 0;
               if ($entry !== null) {
                 $raw = (int)($entry['raw'] ?? 0);
-                $billed = (int)($entry['billed'] ?? max(50000, $raw));
-                $charDisp = number_format($billed);
-                if ($billed !== $raw && $raw > 0) {
-                  $charDisp .= ' (' . number_format($raw) . ')';
-                }
-                $costDisp = '¥' . number_format(cost_jpy($billed));
-              } else {
-                $charDisp = '未計測';
-                $costDisp = '未計測';
+                $billed = (int)($entry['billed'] ?? 0);
               }
+              if ($raw <= 0) {
+                // フォールバック: uploads ディレクトリから原文ファイルを探して概算
+                $uploadDir = __DIR__ . '/uploads';
+                $candidates = glob($uploadDir . '/' . $base . '.*');
+                foreach ($candidates as $cand) {
+                  $r = count_chars_light_local($cand);
+                  if ($r !== false && $r > 0) { $raw = $r; break; }
+                }
+              }
+              if ($billed <= 0) {
+                $billed = max(50000, $raw);
+              }
+              $charDisp = $billed > 0 ? number_format($billed) : '未計測';
+              if ($billed > 0 && $raw > 0 && $billed !== $raw) {
+                $charDisp .= ' (' . number_format($raw) . ')';
+              }
+              $costDisp = $billed > 0 ? ('¥' . number_format(cost_jpy($billed))) : '未計測';
             ?>
             <tr>
               <td><?= h($f) ?></td>

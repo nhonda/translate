@@ -127,11 +127,38 @@ function count_chars_local(string $path): int|false {
     } elseif ($ext === 'xlsx') {
         $zip = new ZipArchive();
         if ($zip->open($path) === true) {
+            $bufs = [];
+            // 1) sharedStrings.xml（共有文字列）
             $xml = $zip->getFromName('xl/sharedStrings.xml');
-            $zip->close();
             if ($xml !== false) {
-                $text = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+                $bufs[] = html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
             }
+            // 2) ワークシートの inlineStr（セル内に直接埋め込まれた文字列）
+            for ($i = 1; $i <= 200; $i++) {
+                $sheetName = sprintf('xl/worksheets/sheet%d.xml', $i);
+                $sx = $zip->getFromName($sheetName);
+                if ($sx === false) {
+                    if ($i === 1) {
+                        // 最初から無ければ以降も無い可能性が高い
+                    }
+                    break;
+                }
+                // <c t="inlineStr"><is> ... </is></c> からテキストを抽出
+                if (preg_match_all('/<c[^>]*t="inlineStr"[^>]*>.*?<is>(.*?)<\/is>.*?<\/c>/si', $sx, $m)) {
+                    foreach ($m[1] as $frag) {
+                        // rich text の <t> 要素を優先抽出
+                        if (preg_match_all('/<t[^>]*>(.*?)<\/t>/si', $frag, $mt)) {
+                            foreach ($mt[1] as $t) {
+                                $bufs[] = html_entity_decode($t, ENT_QUOTES | ENT_XML1, 'UTF-8');
+                            }
+                        } else {
+                            $bufs[] = html_entity_decode(strip_tags($frag), ENT_QUOTES | ENT_XML1, 'UTF-8');
+                        }
+                    }
+                }
+            }
+            $zip->close();
+            $text = trim(implode("\n", array_filter($bufs)));
         }
     } elseif ($ext === 'pptx') {
         $zip = new ZipArchive();
