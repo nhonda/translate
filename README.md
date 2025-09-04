@@ -118,7 +118,7 @@ curl -F file=@sample.pdf "$DEEPL_API_BASE/document" \
 
 ## 注意事項
 
-- DeepL Document API では PDF/DOCX/XLSX の翻訳は1回につき最低50,000文字分がカウントされます。
+- DeepL Document API では PDF/DOCX/XLSX/PPTX の翻訳は1回につき最低50,000文字分がカウントされます。
   - 本アプリの見積もりも最小 50,000 文字で計算します。
   - テストには `.txt` を推奨します。
 - **PDFファイルをアップロードした場合、出力形式はPDF/DOCX/TXTを選択可能**です。
