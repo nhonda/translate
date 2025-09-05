@@ -38,6 +38,13 @@ if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
 
 $name = trim($_POST['name'] ?? '');
 $terms = $_POST['terms'] ?? [];
+$srcLang = strtolower(trim($_POST['source_lang'] ?? 'en'));
+$tgtLang = strtolower(trim($_POST['target_lang'] ?? 'ja'));
+// 許可するのは en/ja のみ、かつ同一不可
+$allowed = ['en','ja'];
+if (!in_array($srcLang, $allowed, true)) { $srcLang = 'en'; }
+if (!in_array($tgtLang, $allowed, true)) { $tgtLang = 'ja'; }
+if ($srcLang === $tgtLang) { $srcLang = 'en'; $tgtLang = 'ja'; }
 
 $rows = [];
 if (is_array($terms)) {
@@ -70,8 +77,8 @@ if ($apiKey === '' || $apiBase === '') {
 if (empty($errors)) {
     $payload = [
         'name' => $name,
-        'source_lang' => 'en',
-        'target_lang' => 'ja',
+        'source_lang' => $srcLang,
+        'target_lang' => $tgtLang,
         'entries' => implode("\n", $rows),
         'entries_format' => 'tsv',
     ];

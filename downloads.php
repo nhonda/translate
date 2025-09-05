@@ -140,7 +140,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     http_response_code(400);
     exit('Invalid CSRF token');
   }
-  if (!empty($_POST['delete'])) {
+  // 行ごとの削除ボタン（単体）
+  if (isset($_POST['delete']) && isset($_POST['filename'])) {
+    $f = $_POST['filename'];
+    $target = realpath($dir . '/' . $f);
+    if ($target !== false && strpos($target, $dir . DIRECTORY_SEPARATOR) === 0 && is_file($target)) {
+      unlink($target);
+    } else {
+      error_log('Invalid delete path: ' . ($f ?? ''));
+    }
+    header('Location: downloads.php?deleted=1');
+    exit;
+  }
+  // 互換: 複数チェック削除（旧UI）
+  if (!empty($_POST['delete']) && is_array($_POST['delete'])) {
     foreach ($_POST['delete'] as $f) {
       $target = realpath($dir . '/' . $f);
       if ($target !== false && strpos($target, $dir . DIRECTORY_SEPARATOR) === 0 && is_file($target)) {
@@ -176,6 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </aside>
 <main>
   <div class="card">
+  <h2>ダウンロードファイル</h2>
   <?php if (isset($_GET['done'])): ?>
     <p style="color:green;"><?= h($_GET['done']) ?> を保存しました。</p>
   <?php endif; ?>
@@ -187,15 +201,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <p>まだ翻訳済みファイルがありません。</p>
     <?php else: ?>
       <div class="sort-links">ソート: <a href="?sort=name">名前</a> | <a href="?sort=mtime">更新日時</a> | <a href="?sort=chars">文字数</a> | <a href="?sort=ext">拡張子</a></div>
-      <form method="post">
-        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
-        <table class="data-table">
+      <table class="data-table">
           <thead>
             <tr>
               <th>ファイル名</th>
               <th>文字数</th>
               <th>概算コスト</th>
-              <th>ダウンロード</th>
               <th>削除</th>
             </tr>
           </thead>
@@ -230,19 +241,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $costDisp = $billed > 0 ? ('¥' . number_format(cost_jpy($billed))) : '未計測';
             ?>
             <tr>
-              <td><?= h($f) ?></td>
+              <td><a href="downloads/<?= h(rawurlencode($f)) ?>" download><?= h($f) ?></a></td>
               <td><?= h($charDisp) ?></td>
               <td><?= h($costDisp) ?></td>
-              <td><a href="downloads/<?= h(rawurlencode($f)) ?>" download>ダウンロード</a></td>
               <td style="text-align:center">
-                <input type="checkbox" name="delete[]" value="<?= h($f) ?>">
+                <form method="post" onsubmit="return confirm('本当に削除しますか？');">
+                  <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
+                  <input type="hidden" name="filename" value="<?= h($f) ?>">
+                  <button type="submit" name="delete" value="1" style="color:red;">削除</button>
+                </form>
               </td>
             </tr>
           <?php endforeach; ?>
           </tbody>
         </table>
-        <button type="submit" class="action-btn">チェックしたファイルを削除</button>
-      </form>
       <?php if ($totalPages > 1): ?>
         <div class="pagination">
           <?php for ($i = 1; $i <= $totalPages; $i++): ?>

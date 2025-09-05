@@ -4,6 +4,28 @@ require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/includes/common.php';
 const RATE_JPY_PER_MILLION = 2500;
 
+// .env を読み込む（DeepLの設定値のため）
+if (file_exists(__DIR__ . '/.env')) {
+    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+    $dotenv->load();
+}
+
+// 環境変数取得ヘルパ
+function env_non_empty(string $key): string {
+    $candidates = [];
+    if (array_key_exists($key, $_ENV))    { $candidates[] = $_ENV[$key]; }
+    if (array_key_exists($key, $_SERVER)) { $candidates[] = $_SERVER[$key]; }
+    $getenv = getenv($key);
+    if ($getenv !== false) { $candidates[] = $getenv; }
+    foreach ($candidates as $v) {
+        if (is_string($v)) {
+            $t = trim($v);
+            if ($t !== '') return $t;
+        }
+    }
+    return '';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -158,6 +180,52 @@ function cost_jpy(int $c): int {
 <div class="card">
   <h2>アップロードファイル</h2>
 
+  <?php
+    // DeepL用語集の取得（選択肢）
+    $apiKey  = env_non_empty('DEEPL_API_KEY');
+    if ($apiKey === '') { $apiKey = env_non_empty('DEEPL_AUTH_KEY'); }
+    $apiBase = rtrim(env_non_empty('DEEPL_API_BASE'), '/');
+    $defaultGlossary = '';
+    $glossaries = [];
+    if ($apiKey !== '' && $apiBase !== '') {
+        $ch = curl_init($apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey));
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_TIMEOUT => 60,
+        ]);
+        $res  = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($res !== false && $code < 400) {
+            $data = json_decode($res, true);
+            if (isset($data['glossaries']) && is_array($data['glossaries'])) {
+                foreach ($data['glossaries'] as $g) {
+                    if (!empty($g['glossary_id'])) {
+                        $glossaries[] = $g;
+                    }
+                }
+                // 既定は「未使用」にする（自動選択なし）
+                // 表示順を登録順に合わせる（glossary.php と同様に保存された順序を適用）
+                $orderFile = __DIR__ . '/logs/glossary_order.json';
+                if (!empty($glossaries) && is_file($orderFile)) {
+                    $raw = @file_get_contents($orderFile);
+                    $order = $raw !== false ? json_decode($raw, true) : null;
+                    if (is_array($order) && !empty($order)) {
+                        $pos = array_flip(array_map('strval', $order));
+                        usort($glossaries, function($a, $b) use ($pos) {
+                            $ia = $pos[$a['glossary_id']] ?? PHP_INT_MAX;
+                            $ib = $pos[$b['glossary_id']] ?? PHP_INT_MAX;
+                            return $ia <=> $ib;
+                        });
+                    }
+                }
+            }
+        }
+    }
+  ?>
+
   <?php if (isset($_GET['deleted'])): ?>
     <p style="color:green;">選択したファイルを削除しました。</p>
   <?php endif; ?>
@@ -172,11 +240,15 @@ function cost_jpy(int $c): int {
           <th>ファイル名</th>
           <th>文字数</th>
           <th>概算コスト</th>
-          <th>操作</th>
+          <th>用語集</th>
+          <th>翻訳言語</th>
+          <th>出力形式</th>
+          <th>翻訳再実行</th>
+          <th>削除</th>
         </tr>
       </thead>
       <tbody>
-      <?php foreach ($files as $f): ?>
+      <?php $rowIndex = 0; foreach ($files as $f): ?>
         <?php
           $entry = $history[$f] ?? null;
           if ($entry !== null) {
@@ -191,56 +263,69 @@ function cost_jpy(int $c): int {
             $charDisp = '未計測';
             $costDisp = '未計測';
           }
+          $formId = 'tf_' . $rowIndex++;
+          // 出力形式候補
+          $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
+          $fmtOptions = [];
+          if ($ext === 'pdf') {
+            $fmtOptions = ['pdf','docx'];
+          } elseif ($ext === 'docx' || $ext === 'doc') {
+            $fmtOptions = ['pdf','docx'];
+          } elseif ($ext === 'xlsx') {
+            $fmtOptions = ['xlsx'];
+          } elseif ($ext === 'pptx') {
+            $fmtOptions = ['pptx'];
+          } elseif ($ext === 'txt') {
+            $fmtOptions = ['txt','pdf','docx'];
+          }
         ?>
         <tr>
-          <td><?= h($f) ?></td>
+          <td><a href="uploads/<?= h(rawurlencode($f)) ?>" download><?= h($f) ?></a></td>
           <td><?= h($charDisp) ?></td>
           <td><?= h($costDisp) ?></td>
           <td>
-            <div class="inline-form-wrap">
-              <!-- 翻訳再実行form -->
-              <form method="post" action="translate.php" class="translate-form">
-                <input type="hidden" name="filename" value="<?= h($f) ?>">
-                <select name="target_lang">
-                  <option value="JA">日本語</option>
-                  <option value="EN-US">英語</option>
-                </select>
-                <?php
-                  $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
-                  $fmtOptions = [];
-                  if ($ext === 'pdf') {
-                    // PDF は PDF または DOCX のみ
-                    $fmtOptions = ['pdf','docx'];
-                  } elseif ($ext === 'docx' || $ext === 'doc') {
-                    // DOC/DOCX は DOCX または PDF
-                    $fmtOptions = ['pdf','docx'];
-                  } elseif ($ext === 'xlsx') {
-                    // XLSX は XLSX のみ
-                    $fmtOptions = ['xlsx'];
-                  } elseif ($ext === 'pptx') {
-                    // PPTX は PPTX のみ
-                    $fmtOptions = ['pptx'];
-                  } elseif ($ext === 'txt') {
-                    // TXT は TXT / PDF / DOCX
-                    $fmtOptions = ['txt','pdf','docx'];
-                  }
-                ?>
-                <?php if (!empty($fmtOptions)): ?>
-                  <select name="output_format">
-                    <?php foreach ($fmtOptions as $opt): ?>
-                      <option value="<?= h($opt) ?>"><?= strtoupper(h($opt)) ?></option>
-                    <?php endforeach; ?>
-                  </select>
-                <?php endif; ?>
-                <button type="submit">翻訳再実行</button>
-              </form>
-              <!-- 削除form（ボタンで即時削除） -->
-              <form method="post" onsubmit="return confirm('本当に削除しますか？');">
-                <input type="hidden" name="filename" value="<?= h($f) ?>">
-                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
-                <button type="submit" name="delete" value="1" style="color:red;">削除</button>
-              </form>
-            </div>
+            <?php if ($glossaries): ?>
+              <select name="glossary_id" class="glossary-select" form="<?= h($formId) ?>">
+                <option value="" selected>未使用</option>
+                <?php foreach ($glossaries as $g): ?>
+                  <option value="<?= h($g['glossary_id']) ?>" data-target-lang="<?= h($g['target_lang'] ?? '') ?>">
+                    <?= h(($g['name'] ?? $g['glossary_id']) . ' (' . ($g['source_lang'] ?? '') . '→' . ($g['target_lang'] ?? '') . ')') ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            <?php else: ?>
+              <select name="glossary_id" class="glossary-select" form="<?= h($formId) ?>">
+                <option value="" selected>未使用</option>
+              </select>
+            <?php endif; ?>
+          </td>
+          <td>
+            <select name="target_lang" class="target-lang-select" form="<?= h($formId) ?>">
+              <option value="JA">日本語</option>
+              <option value="EN-US">英語</option>
+            </select>
+          </td>
+          <td>
+            <?php if (!empty($fmtOptions)): ?>
+              <select name="output_format" form="<?= h($formId) ?>">
+                <?php foreach ($fmtOptions as $opt): ?>
+                  <option value="<?= h($opt) ?>"><?= strtoupper(h($opt)) ?></option>
+                <?php endforeach; ?>
+              </select>
+            <?php endif; ?>
+          </td>
+          <td>
+            <form method="post" action="translate.php" class="translate-form" id="<?= h($formId) ?>">
+              <input type="hidden" name="filename" value="<?= h($f) ?>">
+              <button type="submit">翻訳再実行</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" onsubmit="return confirm('本当に削除しますか？');">
+              <input type="hidden" name="filename" value="<?= h($f) ?>">
+              <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
+              <button type="submit" name="delete" value="1" style="color:red;">削除</button>
+            </form>
           </td>
         </tr>
       <?php endforeach; ?>
@@ -264,7 +349,7 @@ function cost_jpy(int $c): int {
         <td>合計</td>
         <td><?= h($summaryDisp) ?></td>
         <td><?= h('¥' . number_format($totalCost)) ?></td>
-        <td></td>
+        <td colspan="5"></td>
       </tr>
       </tbody>
     </table>
@@ -290,6 +375,22 @@ document.addEventListener('DOMContentLoaded', function(){
   document.querySelectorAll('.translate-form').forEach(function(form){
     form.addEventListener('submit', function(e){
       e.preventDefault();
+      const sel = document.querySelector('.target-lang-select[form="' + form.id + '"]');
+      const tgt = sel ? sel.value : '';
+      if (!tgt) return;
+
+      // Glossary のターゲット言語と整合チェック
+      const gSel = document.querySelector('.glossary-select[form="' + form.id + '"]');
+      if (gSel && gSel.value) {
+        const opt = gSel.options[gSel.selectedIndex];
+        const gTgt = opt ? (opt.getAttribute('data-target-lang') || '') : '';
+        const norm = s => s.toUpperCase().split('-')[0];
+        if (gTgt && norm(gTgt) !== norm(tgt)) {
+          alert('選択した用語集の言語が翻訳先と一致しません。');
+          return;
+        }
+      }
+
       showSpinner();
       updateSpinner(0, '翻訳実行中…');
       const fd = new FormData(form);

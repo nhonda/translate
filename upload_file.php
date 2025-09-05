@@ -96,7 +96,7 @@ if ($apiKey === '') {
     $apiKey = env_non_empty('DEEPL_AUTH_KEY');
 }
 $apiBase = rtrim(env_non_empty('DEEPL_API_BASE'), '/');
-$defaultGlossary = env_non_empty('DEEPL_GLOSSARY_ID');
+$defaultGlossary = '';
 if ($step === 'confirm' && $apiKey !== '' && $apiBase !== '') {
     $ch = curl_init($apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey));
     curl_setopt_array($ch, [
@@ -114,6 +114,21 @@ if ($step === 'confirm' && $apiKey !== '' && $apiBase !== '') {
             foreach ($data['glossaries'] as $g) {
                 if (!empty($g['glossary_id'])) {
                     $glossaries[] = $g;
+                }
+            }
+            // 既定は常に「未使用」にする（自動選択なし）
+            // 表示順を登録順に合わせる（glossary.php と同様に保存された順序を適用）
+            $orderFile = __DIR__ . '/logs/glossary_order.json';
+            if (!empty($glossaries) && is_file($orderFile)) {
+                $raw = @file_get_contents($orderFile);
+                $order = $raw !== false ? json_decode($raw, true) : null;
+                if (is_array($order) && !empty($order)) {
+                    $pos = array_flip(array_map('strval', $order));
+                    usort($glossaries, function($a, $b) use ($pos) {
+                        $ia = $pos[$a['glossary_id']] ?? PHP_INT_MAX;
+                        $ib = $pos[$b['glossary_id']] ?? PHP_INT_MAX;
+                        return $ia <=> $ib;
+                    });
                 }
             }
         }
@@ -300,32 +315,30 @@ function count_chars_local(string $path): int|false {
         <p>概算コスト：￥<?= h(number_format($costJpy)) ?></p>
         <form id="translateForm" action="translate.php" method="post">
           <input type="hidden" name="filename" value="<?= h($filename) ?>">
-          <label for="target_lang">翻訳先：</label>
+
+          <span>用語集:</span>
+          <select name="glossary_id" id="glossary_id">
+            <option value="" selected>未使用</option>
+            <?php foreach ($glossaries as $g): ?>
+              <option value="<?= h($g['glossary_id']) ?>" data-source-lang="<?= h($g['source_lang'] ?? '') ?>" data-target-lang="<?= h($g['target_lang'] ?? '') ?>">
+                <?= h(($g['name'] ?? $g['glossary_id']) . ' (' . ($g['source_lang'] ?? '') . '→' . ($g['target_lang'] ?? '') . ')') ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+
+          <span style="margin-left:12px;">翻訳言語:</span>
           <select name="target_lang" id="target_lang">
             <option value="JA">日本語</option>
             <option value="EN-US">英語</option>
           </select>
-          <label for="output_format">変換形式：</label>
+
+          <span style="margin-left:12px;">出力形式:</span>
           <select name="output_format" id="output_format">
             <?php foreach ($fmtOptions as $opt): ?>
               <option value="<?= h($opt) ?>"><?= strtoupper(h($opt)) ?></option>
             <?php endforeach; ?>
           </select>
-          <?php if ($glossaries): ?>
-            <label for="glossary_id">用語集：</label>
-            <select name="glossary_id" id="glossary_id">
-              <option value="" <?= $defaultGlossary === '' ? 'selected' : '' ?>>未使用</option>
-              <?php foreach ($glossaries as $g): ?>
-                <option value="<?= h($g['glossary_id']) ?>" data-source-lang="<?= h($g['source_lang'] ?? '') ?>" data-target-lang="<?= h($g['target_lang'] ?? '') ?>" <?= $g['glossary_id'] === $defaultGlossary ? 'selected' : '' ?>>
-                  <?= h(($g['name'] ?? $g['glossary_id']) . ' (' . ($g['source_lang'] ?? '') . '→' . ($g['target_lang'] ?? '') . ')') ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          <?php else: ?>
-            <label for="glossary_id">用語集ID：</label>
-            <input type="text" name="glossary_id" id="glossary_id" value="<?= h($defaultGlossary) ?>">
-          <?php endif; ?>
-          <button type="submit">翻訳を開始</button>
+          <button type="submit" style="margin-left:12px;">翻訳実行</button>
         </form>
       <?php endif; ?>
     </div>
@@ -346,9 +359,11 @@ function count_chars_local(string $path): int|false {
     if (form) {
       form.addEventListener('submit', function(e){
         e.preventDefault();
-        const tgt = document.getElementById('target_lang').value;
+        const tgtSel = document.getElementById('target_lang');
+        const tgt = tgtSel ? tgtSel.value : '';
+        if (!tgt) return;
         const gField = document.getElementById('glossary_id');
-        if (gField && gField.tagName === 'SELECT') {
+        if (gField) {
           const opt = gField.options[gField.selectedIndex];
           const gTgt = opt ? opt.getAttribute('data-target-lang') : '';
           const norm = s => s.toUpperCase().split('-')[0];
@@ -357,6 +372,7 @@ function count_chars_local(string $path): int|false {
             return;
           }
         }
+
         showSpinner();
         const fd = new FormData(form);
         const poll = () => {
