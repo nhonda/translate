@@ -37,6 +37,7 @@ if ($apiKey === '') {
 }
 $apiBase = rtrim(env_non_empty('DEEPL_API_BASE'), '/');
 $debug   = filter_var(env_non_empty('APP_DEBUG'), FILTER_VALIDATE_BOOLEAN);
+$defaultGlossary = env_non_empty('DEEPL_GLOSSARY_ID');
 
 // Debug helpers
 function debug_log(string $msg): void {
@@ -144,6 +145,9 @@ $filename = $_POST['filename'] ?? '';
 $outputFormat = trim($_POST['output_format'] ?? '');
 $targetLangIn = strtoupper(trim($_POST['target_lang'] ?? ''));
 $glossaryId = trim($_POST['glossary_id'] ?? '');
+if ($glossaryId === '') {
+    $glossaryId = $defaultGlossary;
+}
 // Normalize and validate target language
 if ($targetLangIn === 'EN') { $targetLangIn = 'EN-US'; }
 if (!in_array($targetLangIn, ['JA','EN-US','EN-GB'], true)) {

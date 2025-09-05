@@ -96,6 +96,7 @@ if ($apiKey === '') {
     $apiKey = env_non_empty('DEEPL_AUTH_KEY');
 }
 $apiBase = rtrim(env_non_empty('DEEPL_API_BASE'), '/');
+$defaultGlossary = env_non_empty('DEEPL_GLOSSARY_ID');
 if ($step === 'confirm' && $apiKey !== '' && $apiBase !== '') {
     $ch = curl_init($apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey));
     curl_setopt_array($ch, [
@@ -312,16 +313,16 @@ function count_chars_local(string $path): int|false {
           <?php if ($glossaries): ?>
             <label for="glossary_id">用語集：</label>
             <select name="glossary_id" id="glossary_id">
-              <option value="">未使用</option>
+              <option value="" <?= $defaultGlossary === '' ? 'selected' : '' ?>>未使用</option>
               <?php foreach ($glossaries as $g): ?>
-                <option value="<?= h($g['glossary_id']) ?>" data-source-lang="<?= h($g['source_lang'] ?? '') ?>" data-target-lang="<?= h($g['target_lang'] ?? '') ?>">
+                <option value="<?= h($g['glossary_id']) ?>" data-source-lang="<?= h($g['source_lang'] ?? '') ?>" data-target-lang="<?= h($g['target_lang'] ?? '') ?>" <?= $g['glossary_id'] === $defaultGlossary ? 'selected' : '' ?>>
                   <?= h(($g['name'] ?? $g['glossary_id']) . ' (' . ($g['source_lang'] ?? '') . '→' . ($g['target_lang'] ?? '') . ')') ?>
                 </option>
               <?php endforeach; ?>
             </select>
           <?php else: ?>
             <label for="glossary_id">用語集ID：</label>
-            <input type="text" name="glossary_id" id="glossary_id">
+            <input type="text" name="glossary_id" id="glossary_id" value="<?= h($defaultGlossary) ?>">
           <?php endif; ?>
           <button type="submit">翻訳を開始</button>
         </form>

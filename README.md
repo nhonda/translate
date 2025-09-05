@@ -69,11 +69,14 @@ DeepL Translation Tool (PHP)
     DEEPL_API_BASE=https://api-free.deepl.com/v2
     # 任意: デバッグログ（機微はマスク）
     APP_DEBUG=false
+    # 任意: デフォルト用語集ID
+    DEEPL_GLOSSARY_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
     ```
 
     - `DEEPL_API_KEY` / `DEEPL_AUTH_KEY` : DeepLの認証キー（両対応、非空な方を使用）。
     - `DEEPL_API_BASE` : Document API のエンドポイント。Proプランの場合は `https://api.deepl.com/v2` を指定します。
     - `APP_DEBUG` : true で詳細デバッグログを出力。
+    - `DEEPL_GLOSSARY_ID` : 未指定時に自動で使用する用語集ID（フォームで指定した値が優先されます）。
 
 6. **.envファイルのセキュリティ対策**
 
@@ -101,8 +104,9 @@ DeepL Translation Tool (PHP)
    - PDF / DOC / DOCX: `pdf` / `docx` / `txt`（`txt` は DeepL で `docx` を取得後にサーバ側でテキスト抽出）
    - XLSX: `xlsx`
    - PPTX: `pptx`
-4. **DeepLへ送信** – アップロードされたファイルを DeepL の Document API に送信して翻訳します。
-5. **出力保存・リンク表示** – 翻訳結果は `downloads/` ディレクトリに保存され、ダウンロードリンクが表示されます。
+4. **用語集の選択（任意）** – `.env` の `DEEPL_GLOSSARY_ID` が自動入力されます。ドロップダウンから既存の用語集を選ぶか、未選択のまま送信すると用語集無しで翻訳します。手動入力も可能で、DeepLの仕様上、例えば日本語↔英語など対応する言語ペアのみ利用できます。
+5. **DeepLへ送信** – アップロードされたファイルを DeepL の Document API に送信して翻訳します。
+6. **出力保存・リンク表示** – 翻訳結果は `downloads/` ディレクトリに保存され、ダウンロードリンクが表示されます。
 
 ### 言語とファイル名の規約
 
