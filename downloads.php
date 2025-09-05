@@ -164,6 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
 <header>
   <h1>翻訳済みファイル一覧</h1>
+  <nav><a href="index.html">トップに戻る</a></nav>
 </header>
   <aside>
     <ul>
