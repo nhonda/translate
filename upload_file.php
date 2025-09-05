@@ -3,6 +3,26 @@ session_start();
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/includes/common.php';
 
+$dotenv = \Dotenv\Dotenv::createImmutable(__DIR__);
+if (file_exists(__DIR__ . '/.env')) {
+    $dotenv->load();
+}
+
+function env_non_empty(string $key): string {
+    $candidates = [];
+    if (array_key_exists($key, $_ENV))    { $candidates[] = $_ENV[$key]; }
+    if (array_key_exists($key, $_SERVER)) { $candidates[] = $_SERVER[$key]; }
+    $getenv = getenv($key);
+    if ($getenv !== false) { $candidates[] = $getenv; }
+    foreach ($candidates as $v) {
+        if (is_string($v)) {
+            $t = trim($v);
+            if ($t !== '') return $t;
+        }
+    }
+    return '';
+}
+
 const RATE_JPY_PER_MILLION = 2500;
 
 $uploadsDir = __DIR__ . '/uploads';
@@ -22,6 +42,7 @@ $ext = '';
 $rawChars = 0;
 $costJpy = 0;
 $fmtOptions = [];
+$glossaries = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['file']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
@@ -64,6 +85,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // PPTX は PPTX のみ
                         $fmtOptions = ['pptx'];
                     }
+                }
+            }
+        }
+    }
+}
+
+$apiKey  = env_non_empty('DEEPL_API_KEY');
+if ($apiKey === '') {
+    $apiKey = env_non_empty('DEEPL_AUTH_KEY');
+}
+$apiBase = rtrim(env_non_empty('DEEPL_API_BASE'), '/');
+if ($step === 'confirm' && $apiKey !== '' && $apiBase !== '') {
+    $ch = curl_init($apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey));
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_TIMEOUT => 60,
+    ]);
+    $res  = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($res !== false && $code < 400) {
+        $data = json_decode($res, true);
+        if (isset($data['glossaries']) && is_array($data['glossaries'])) {
+            foreach ($data['glossaries'] as $g) {
+                if (!empty($g['glossary_id'])) {
+                    $glossaries[] = $g;
                 }
             }
         }
@@ -260,6 +309,20 @@ function count_chars_local(string $path): int|false {
               <option value="<?= h($opt) ?>"><?= strtoupper(h($opt)) ?></option>
             <?php endforeach; ?>
           </select>
+          <?php if ($glossaries): ?>
+            <label for="glossary_id">用語集：</label>
+            <select name="glossary_id" id="glossary_id">
+              <option value="">未使用</option>
+              <?php foreach ($glossaries as $g): ?>
+                <option value="<?= h($g['glossary_id']) ?>" data-source-lang="<?= h($g['source_lang'] ?? '') ?>" data-target-lang="<?= h($g['target_lang'] ?? '') ?>">
+                  <?= h(($g['name'] ?? $g['glossary_id']) . ' (' . ($g['source_lang'] ?? '') . '→' . ($g['target_lang'] ?? '') . ')') ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          <?php else: ?>
+            <label for="glossary_id">用語集ID：</label>
+            <input type="text" name="glossary_id" id="glossary_id">
+          <?php endif; ?>
           <button type="submit">翻訳を開始</button>
         </form>
       <?php endif; ?>
@@ -281,6 +344,17 @@ function count_chars_local(string $path): int|false {
     if (form) {
       form.addEventListener('submit', function(e){
         e.preventDefault();
+        const tgt = document.getElementById('target_lang').value;
+        const gField = document.getElementById('glossary_id');
+        if (gField && gField.tagName === 'SELECT') {
+          const opt = gField.options[gField.selectedIndex];
+          const gTgt = opt ? opt.getAttribute('data-target-lang') : '';
+          const norm = s => s.toUpperCase().split('-')[0];
+          if (gField.value && gTgt && norm(gTgt) !== norm(tgt)) {
+            alert('選択した用語集の言語が翻訳先と一致しません。');
+            return;
+          }
+        }
         showSpinner();
         const fd = new FormData(form);
         const poll = () => {
