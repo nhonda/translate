@@ -143,6 +143,7 @@ debug_log(sprintf('[DeepL] using base=%s key_len=%d key_tail=%s', $apiBase, strl
 $filename = $_POST['filename'] ?? '';
 $outputFormat = trim($_POST['output_format'] ?? '');
 $targetLangIn = strtoupper(trim($_POST['target_lang'] ?? ''));
+$glossaryId = trim($_POST['glossary_id'] ?? '');
 // Normalize and validate target language
 if ($targetLangIn === 'EN') { $targetLangIn = 'EN-US'; }
 if (!in_array($targetLangIn, ['JA','EN-US','EN-GB'], true)) {
@@ -192,10 +193,11 @@ if ($ext === 'txt') {
     }
     $translateUrl = $apiBase . '/translate' . '?auth_key=' . rawurlencode($apiKey);
     debug_log('[DeepL] POST ' . redact_url($translateUrl) . ' (text)');
-    $doTextRequest = function(string $tgt, string $srcHint = '') use ($translateUrl, $apiKey, $text) {
+    $doTextRequest = function(string $tgt, string $srcHint = '') use ($translateUrl, $apiKey, $text, $glossaryId) {
         $ch = curl_init($translateUrl);
         $fields = ['auth_key' => $apiKey, 'text' => $text, 'target_lang' => $tgt];
         if ($srcHint !== '') { $fields['source_lang'] = $srcHint; }
+        if ($glossaryId !== '') { $fields['glossary_id'] = $glossaryId; }
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
@@ -310,6 +312,9 @@ if ($ext === 'txt') {
             'target_lang' => $userTarget,
             'auth_key' => $apiKey,
         ];
+        if ($glossaryId !== '') {
+            $postFields['glossary_id'] = $glossaryId;
+        }
         // Decide DeepL output format: allow 'pdf' or 'docx'. For 'txt', request 'docx' then flatten to text after.
         $deeplFormat = '';
         if (in_array($outputFormat, ['pdf','docx'], true)) {
