@@ -37,7 +37,10 @@ if ($apiKey === '') {
 }
 $apiBase = rtrim(env_non_empty('DEEPL_API_BASE'), '/');
 $debug   = filter_var(env_non_empty('APP_DEBUG'), FILTER_VALIDATE_BOOLEAN);
-$defaultGlossary = env_non_empty('DEEPL_GLOSSARY_ID');
+$glossaryId = trim($_POST['glossary_id'] ?? '');
+if ($glossaryId === '') {
+    $glossaryId = env_non_empty('DEEPL_GLOSSARY_ID');
+}
 
 // Debug helpers
 function debug_log(string $msg): void {
@@ -144,10 +147,6 @@ debug_log(sprintf('[DeepL] using base=%s key_len=%d key_tail=%s', $apiBase, strl
 $filename = $_POST['filename'] ?? '';
 $outputFormat = trim($_POST['output_format'] ?? '');
 $targetLangIn = strtoupper(trim($_POST['target_lang'] ?? ''));
-$glossaryId = trim($_POST['glossary_id'] ?? '');
-if ($glossaryId === '') {
-    $glossaryId = $defaultGlossary;
-}
 // Normalize and validate target language
 if ($targetLangIn === 'EN') { $targetLangIn = 'EN-US'; }
 if (!in_array($targetLangIn, ['JA','EN-US','EN-GB'], true)) {
@@ -197,11 +196,11 @@ if ($ext === 'txt') {
     }
     $translateUrl = $apiBase . '/translate' . '?auth_key=' . rawurlencode($apiKey);
     debug_log('[DeepL] POST ' . redact_url($translateUrl) . ' (text)');
-    $doTextRequest = function(string $tgt, string $srcHint = '') use ($translateUrl, $apiKey, $text, $glossaryId) {
+    $doTextRequest = function(string $tgt, string $srcHint = '', string $gloss = '') use ($translateUrl, $apiKey, $text) {
         $ch = curl_init($translateUrl);
         $fields = ['auth_key' => $apiKey, 'text' => $text, 'target_lang' => $tgt];
         if ($srcHint !== '') { $fields['source_lang'] = $srcHint; }
-        if ($glossaryId !== '') { $fields['glossary_id'] = $glossaryId; }
+        if ($gloss !== '') { $fields['glossary_id'] = $gloss; }
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
@@ -219,27 +218,33 @@ if ($ext === 'txt') {
         return [$res, $code, $hdrOut, $err];
     };
     $sourceHint = '';
-    [$res, $code, $hdrOut, $err] = $doTextRequest($userTarget, $sourceHint);
-    if ($hdrOut) {
-        $redacted = preg_replace('/(Authorization:\s*DeepL-Auth-Key\s+)[^\r\n]+/i', '$1[REDACTED]', $hdrOut);
-        $redacted = preg_replace('/(auth_key=)[^\s&]+/i', '$1[REDACTED]', $redacted);
-        debug_log('[DeepL] request-headers: ' . trim($redacted));
-    }
-    if ($res === false || $code >= 400) {
-        $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
-        // 自動リトライ（原文=翻訳先）: ターゲットは固定し、source_lang を指定して再試行
-        if (is_string($detail) && stripos($detail, 'Source and target language are equal') !== false && $sourceHint === '') {
-            $updateProgress(12, '原文言語を指定して再試行中');
-            $sourceHint = ($userTarget === 'JA') ? 'EN' : 'JA';
-            [$res, $code, $hdrOut, $err] = $doTextRequest($userTarget, $sourceHint);
+    $gloss = $glossaryId;
+    while (true) {
+        [$res, $code, $hdrOut, $err] = $doTextRequest($userTarget, $sourceHint, $gloss);
+        if ($hdrOut) {
+            $redacted = preg_replace('/(Authorization:\s*DeepL-Auth-Key\s+)[^\r\n]+/i', '$1[REDACTED]', $hdrOut);
+            $redacted = preg_replace('/(auth_key=)[^\s&]+/i', '$1[REDACTED]', $redacted);
+            debug_log('[DeepL] request-headers: ' . trim($redacted));
         }
         if ($res === false || $code >= 400) {
             $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
+            if ($gloss !== '' && is_string($detail) && stripos($detail, 'glossary') !== false) {
+                error_log("[DeepL] glossary unsupported: $detail");
+                $gloss = '';
+                continue; // retry without glossary
+            }
+            if ($sourceHint === '' && is_string($detail) && stripos($detail, 'Source and target language are equal') !== false) {
+                $updateProgress(12, '原文言語を指定して再試行中');
+                $sourceHint = ($userTarget === 'JA') ? 'EN' : 'JA';
+                continue; // retry with source hint
+            }
             error_log("[DeepL] status=$code message=$detail");
             http_response_code($code ?: 500);
-            echo '翻訳に失敗しました';
+            $msg = is_string($detail) ? $detail : '翻訳に失敗しました';
+            echo htmlspecialchars($msg, ENT_QUOTES, 'UTF-8');
             exit;
         }
+        break;
     }
     $data = json_decode($res, true);
     $translated = $data['translations'][0]['text'] ?? '';
@@ -306,6 +311,7 @@ if ($ext === 'txt') {
     $updateProgress(10, 'ドキュメントを送信中');
     $sourceHint = '';
     $attempt = 0;
+    $gloss = $glossaryId;
     while (true) {
         // create document
         $docCreateUrl = $apiBase . '/document' . '?auth_key=' . rawurlencode($apiKey);
@@ -316,8 +322,8 @@ if ($ext === 'txt') {
             'target_lang' => $userTarget,
             'auth_key' => $apiKey,
         ];
-        if ($glossaryId !== '') {
-            $postFields['glossary_id'] = $glossaryId;
+        if ($gloss !== '') {
+            $postFields['glossary_id'] = $gloss;
         }
         // Decide DeepL output format: allow 'pdf' or 'docx'. For 'txt', request 'docx' then flatten to text after.
         $deeplFormat = '';
@@ -353,6 +359,12 @@ if ($ext === 'txt') {
         }
         if ($res === false || $code >= 400) {
             $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
+            if ($attempt === 0 && $gloss !== '' && is_string($detail) && stripos($detail, 'glossary') !== false) {
+                error_log('[DeepL] glossary unsupported (create): ' . $detail);
+                $gloss = '';
+                $attempt++;
+                continue; // retry without glossary
+            }
             if ($attempt === 0 && is_string($detail) && stripos($detail, 'Source and target language are equal') !== false) {
                 $updateProgress(12, '原文言語を指定して再試行中');
                 $sourceHint = ($userTarget === 'JA') ? 'EN' : 'JA';
@@ -361,7 +373,8 @@ if ($ext === 'txt') {
             }
             error_log("[DeepL] status=$code message=$detail");
             http_response_code($code ?: 500);
-            echo '翻訳開始に失敗しました';
+            $msg = is_string($detail) ? $detail : '翻訳開始に失敗しました';
+            echo htmlspecialchars($msg, ENT_QUOTES, 'UTF-8');
             exit;
         }
         $data = json_decode($res, true);
@@ -402,7 +415,8 @@ if ($ext === 'txt') {
                 $detail = $res ? (json_decode($res, true)['message'] ?? $res) : $err;
                 error_log("[DeepL] status=$code message=$detail");
                 http_response_code($code ?: 500);
-                echo '翻訳状況の取得に失敗しました';
+                $msg = is_string($detail) ? $detail : '翻訳状況の取得に失敗しました';
+                echo htmlspecialchars($msg, ENT_QUOTES, 'UTF-8');
                 exit;
             }
             $info = json_decode($res, true);
@@ -419,6 +433,13 @@ if ($ext === 'txt') {
             }
             if ($status === 'error') {
                 $msg = $info['message'] ?? 'DeepLエラー';
+                if ($attempt === 0 && $gloss !== '' && is_string($msg) && stripos($msg, 'glossary') !== false) {
+                    error_log('[DeepL] status=error (glossary), retry without glossary');
+                    $gloss = '';
+                    $attempt++;
+                    // restart without glossary
+                    break; // break polling loop to recreate
+                }
                 if ($attempt === 0 && is_string($msg) && stripos($msg, 'Source and target language are equal') !== false) {
                     error_log('[DeepL] status=error (equal-language), retry with source_lang hint');
                     $updateProgress(12, '原文言語を指定して再試行中');
@@ -429,7 +450,8 @@ if ($ext === 'txt') {
                 }
                 error_log("[DeepL] status=error message=$msg");
                 http_response_code(500);
-                echo $msg;
+                $emsg = is_string($msg) ? $msg : 'DeepLエラー';
+                echo htmlspecialchars($emsg, ENT_QUOTES, 'UTF-8');
                 exit;
             }
             $updateProgress(30, '翻訳中...');
@@ -466,7 +488,8 @@ if ($ext === 'txt') {
         $detail = $fileData ? (json_decode($fileData, true)['message'] ?? $fileData) : $err;
         error_log("[DeepL] status=$code message=$detail");
         http_response_code($code ?: 500);
-        echo '翻訳結果の取得に失敗しました';
+        $msg = is_string($detail) ? $detail : '翻訳結果の取得に失敗しました';
+        echo htmlspecialchars($msg, ENT_QUOTES, 'UTF-8');
         exit;
     }
     $outDir = __DIR__ . '/downloads';
