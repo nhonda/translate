@@ -7,7 +7,7 @@ DeepL Translation Tool (PHP)
 
 2025-09: PDF の文字数取得において、Smalot が空文字を返すケースでも確実にフォールバックするよう修正。TXT 入力の出力形式に PDF/DOCX を追加し、PDF/DOC/DOCX 入力でも TXT でダウンロード可能に。PPTX のアップロード/翻訳に対応。さらに、翻訳先の言語選択（日本語/英語）に対応し、出力ファイル名のサフィックス（`_jp` / `_en`）を導入。
 
-## 本日の更新（UI/Glossary 周り）
+## 2025/09/05 更新（UI/Glossary 周り）
 
 - 用語集管理の強化（`glossary.php` / 新規 `glossary_edit.php` / `glossary_update.php`）
   - 一覧の言語表記を大文字に統一（`EN → JA`）。
