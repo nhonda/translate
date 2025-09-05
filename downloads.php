@@ -165,13 +165,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <header>
   <h1>翻訳済みファイル一覧</h1>
 </header>
-<aside>
-  <ul>
-    <li><a href="upload_file.php">ファイル アップロード</a></li>
-    <li><a href="downloads.php">翻訳済みDL</a></li>
-    <li><a href="manage.php">ファイル管理</a></li>
-  </ul>
-</aside>
+  <aside>
+    <ul>
+      <li><a href="upload_file.php">ファイル アップロード</a></li>
+      <li><a href="downloads.php">翻訳済みDL</a></li>
+      <li><a href="manage.php">ファイル管理</a></li>
+      <li><a href="glossary.php">用語集管理</a></li>
+    </ul>
+  </aside>
 <main>
   <div class="card">
   <?php if (isset($_GET['done'])): ?>

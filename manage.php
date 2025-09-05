@@ -150,6 +150,7 @@ function cost_jpy(int $c): int {
     <li><a href="upload_file.php">ファイル アップロード</a></li>
     <li><a href="downloads.php">翻訳済みDL</a></li>
     <li><a href="manage.php">ファイル管理</a></li>
+    <li><a href="glossary.php">用語集管理</a></li>
   </ul>
 </aside>
 
