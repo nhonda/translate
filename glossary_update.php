@@ -55,6 +55,11 @@ if (is_array($terms)) {
     foreach ($terms as $pair) {
         $src = trim($pair['source'] ?? '');
         $dst = trim($pair['target'] ?? '');
+        // 用語内のタブ・改行はスペースに正規化
+        $src = str_replace(["\r", "\n", "\t"], ' ', $src);
+        $dst = str_replace(["\r", "\n", "\t"], ' ', $dst);
+        $src = trim($src);
+        $dst = trim($dst);
         if ($src !== '' && $dst !== '') {
             $rows[] = $src . "\t" . $dst;
         }
@@ -65,6 +70,10 @@ if (is_array($termsRev)) {
     foreach ($termsRev as $pair) {
         $src = trim($pair['source'] ?? '');
         $dst = trim($pair['target'] ?? '');
+        $src = str_replace(["\r", "\n", "\t"], ' ', $src);
+        $dst = str_replace(["\r", "\n", "\t"], ' ', $dst);
+        $src = trim($src);
+        $dst = trim($dst);
         if ($src !== '' && $dst !== '') {
             $rowsRev[] = $src . "\t" . $dst;
         }
@@ -110,6 +119,7 @@ if (empty($errors)) {
         $replaceMap = [];
         // 2) 主方向を再作成
         if (!empty($rows)) {
+            $oldDeletedMain = false;
             $payload = [
                 'name' => $name,
                 'source_lang' => $sourceLang,
@@ -122,14 +132,84 @@ if (empty($errors)) {
                 CURLOPT_POST => true,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POSTFIELDS => http_build_query($payload),
-                CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: DeepL-Auth-Key ' . $apiKey,
+                    'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                    'Accept: application/json'
+                ],
                 CURLOPT_CONNECTTIMEOUT => 15,
                 CURLOPT_TIMEOUT => 60,
             ]);
             $resCreate = curl_exec($ch);
             $codeCreate = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+            // Fallback: 再試行（言語コードを大文字化、auth_key をクエリにも付加）
             if ($resCreate === false || $codeCreate >= 400) {
+                $payloadRetry = $payload;
+                $payloadRetry['source_lang'] = strtoupper($payload['source_lang'] ?? '');
+                $payloadRetry['target_lang'] = strtoupper($payload['target_lang'] ?? '');
+                $urlRetry = $apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey);
+                $ch = curl_init($urlRetry);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POSTFIELDS => http_build_query($payloadRetry),
+                    CURLOPT_HTTPHEADER => [
+                        'Authorization: DeepL-Auth-Key ' . $apiKey,
+                        'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept: application/json'
+                    ],
+                    CURLOPT_CONNECTTIMEOUT => 15,
+                    CURLOPT_TIMEOUT => 60,
+                ]);
+                $resCreate2nd = curl_exec($ch);
+                $codeCreate2nd = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if (!($resCreate2nd !== false && $codeCreate2nd < 400)) {
+                    // 初回のレスポンスを失敗扱いのままにする
+                } else {
+                    $resCreate = $resCreate2nd;
+                    $codeCreate = $codeCreate2nd;
+                }
+            }
+            if ($resCreate === false || $codeCreate >= 400) {
+                // DeepL Free の上限（"Too many glossaries"）対策: 先に旧IDを削除してから再作成
+                $bodyStr = (string)$resCreate;
+                if ((int)$codeCreate === 456 || stripos($bodyStr, 'Too many glossaries') !== false) {
+                    $ch = curl_init($apiBase . '/glossaries/' . rawurlencode($id));
+                    curl_setopt_array($ch, [
+                        CURLOPT_CUSTOMREQUEST => 'DELETE',
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+                        CURLOPT_CONNECTTIMEOUT => 15,
+                        CURLOPT_TIMEOUT => 60,
+                    ]);
+                    curl_exec($ch);
+                    curl_close($ch);
+                    $oldDeletedMain = true;
+
+                    // 再作成（旧IDを削除済みのため上限に引っかからない）
+                    $ch = curl_init($apiBase . '/glossaries');
+                    curl_setopt_array($ch, [
+                        CURLOPT_POST => true,
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_POSTFIELDS => http_build_query($payload),
+                        CURLOPT_HTTPHEADER => [
+                            'Authorization: DeepL-Auth-Key ' . $apiKey,
+                            'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                            'Accept: application/json'
+                        ],
+                        CURLOPT_CONNECTTIMEOUT => 15,
+                        CURLOPT_TIMEOUT => 60,
+                    ]);
+                    $resCreate = curl_exec($ch);
+                    $codeCreate = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+                }
+            }
+            if ($resCreate === false || $codeCreate >= 400) {
+                // デバッグ用ログ
+                error_log('glossary_update main create failed: HTTP ' . ($codeCreate ?: 'n/a') . ' body=' . substr((string)$resCreate, 0, 500));
                 $errors[] = '用語集（主方向）の再作成に失敗しました';
             } else {
                 $created = json_decode($resCreate, true);
@@ -137,22 +217,25 @@ if (empty($errors)) {
                 if ($newIdMain !== '') {
                     $replaceMap[] = ['old' => $id, 'new' => $newIdMain];
                 }
-                // 旧を削除
-                $ch = curl_init($apiBase . '/glossaries/' . rawurlencode($id));
-                curl_setopt_array($ch, [
-                    CURLOPT_CUSTOMREQUEST => 'DELETE',
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
-                    CURLOPT_CONNECTTIMEOUT => 15,
-                    CURLOPT_TIMEOUT => 60,
-                ]);
-                curl_exec($ch);
-                curl_close($ch);
+                // 旧を削除（上限対策で既に削除した場合はスキップ）
+                if (!$oldDeletedMain) {
+                    $ch = curl_init($apiBase . '/glossaries/' . rawurlencode($id));
+                    curl_setopt_array($ch, [
+                        CURLOPT_CUSTOMREQUEST => 'DELETE',
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+                        CURLOPT_CONNECTTIMEOUT => 15,
+                        CURLOPT_TIMEOUT => 60,
+                    ]);
+                    curl_exec($ch);
+                    curl_close($ch);
+                }
             }
         }
 
         // 3) 逆方向を再作成（任意）
         if (!empty($rowsRev)) {
+            $oldDeletedRev = false;
             $revSource = $targetLang; // 逆方向
             $revTarget = $sourceLang;
             $payload = [
@@ -167,7 +250,11 @@ if (empty($errors)) {
                 CURLOPT_POST => true,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POSTFIELDS => http_build_query($payload),
-                CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: DeepL-Auth-Key ' . $apiKey,
+                    'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                    'Accept: application/json'
+                ],
                 CURLOPT_CONNECTTIMEOUT => 15,
                 CURLOPT_TIMEOUT => 60,
             ]);
@@ -175,6 +262,70 @@ if (empty($errors)) {
             $codeCreate2 = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
             if ($resCreate2 === false || $codeCreate2 >= 400) {
+                $payloadRetry = $payload;
+                $payloadRetry['source_lang'] = strtoupper($payload['source_lang'] ?? '');
+                $payloadRetry['target_lang'] = strtoupper($payload['target_lang'] ?? '');
+                $urlRetry = $apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey);
+                $ch = curl_init($urlRetry);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POSTFIELDS => http_build_query($payloadRetry),
+                    CURLOPT_HTTPHEADER => [
+                        'Authorization: DeepL-Auth-Key ' . $apiKey,
+                        'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept: application/json'
+                    ],
+                    CURLOPT_CONNECTTIMEOUT => 15,
+                    CURLOPT_TIMEOUT => 60,
+                ]);
+                $resCreate2_retry = curl_exec($ch);
+                $codeCreate2_retry = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if (!($resCreate2_retry !== false && $codeCreate2_retry < 400)) {
+                    // keep original failure
+                } else {
+                    $resCreate2 = $resCreate2_retry;
+                    $codeCreate2 = $codeCreate2_retry;
+                }
+            }
+            if ($resCreate2 === false || $codeCreate2 >= 400) {
+                $bodyStr2 = (string)$resCreate2;
+                if ((int)$codeCreate2 === 456 || stripos($bodyStr2, 'Too many glossaries') !== false) {
+                    if ($reverseId !== '') {
+                        $ch = curl_init($apiBase . '/glossaries/' . rawurlencode($reverseId));
+                        curl_setopt_array($ch, [
+                            CURLOPT_CUSTOMREQUEST => 'DELETE',
+                            CURLOPT_RETURNTRANSFER => true,
+                            CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+                            CURLOPT_CONNECTTIMEOUT => 15,
+                            CURLOPT_TIMEOUT => 60,
+                        ]);
+                        curl_exec($ch);
+                        curl_close($ch);
+                        $oldDeletedRev = true;
+                    }
+                    // 再作成
+                    $ch = curl_init($apiBase . '/glossaries');
+                    curl_setopt_array($ch, [
+                        CURLOPT_POST => true,
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_POSTFIELDS => http_build_query($payload),
+                        CURLOPT_HTTPHEADER => [
+                            'Authorization: DeepL-Auth-Key ' . $apiKey,
+                            'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+                            'Accept: application/json'
+                        ],
+                        CURLOPT_CONNECTTIMEOUT => 15,
+                        CURLOPT_TIMEOUT => 60,
+                    ]);
+                    $resCreate2 = curl_exec($ch);
+                    $codeCreate2 = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+                }
+            }
+            if ($resCreate2 === false || $codeCreate2 >= 400) {
+                error_log('glossary_update reverse create failed: HTTP ' . ($codeCreate2 ?: 'n/a') . ' body=' . substr((string)$resCreate2, 0, 500));
                 $errors[] = '用語集（逆方向）の再作成に失敗しました';
             } else {
                 $created2 = json_decode($resCreate2, true);
@@ -182,7 +333,7 @@ if (empty($errors)) {
                 if ($newIdRev !== '' && $reverseId !== '') {
                     $replaceMap[] = ['old' => $reverseId, 'new' => $newIdRev];
                 }
-                if ($reverseId !== '') {
+                if ($reverseId !== '' && !$oldDeletedRev) {
                     $ch = curl_init($apiBase . '/glossaries/' . rawurlencode($reverseId));
                     curl_setopt_array($ch, [
                         CURLOPT_CUSTOMREQUEST => 'DELETE',

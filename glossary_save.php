@@ -51,6 +51,11 @@ if (is_array($terms)) {
     foreach ($terms as $pair) {
         $src = trim($pair['source'] ?? '');
         $dst = trim($pair['target'] ?? '');
+        // 用語内のタブ・改行はスペースに正規化
+        $src = str_replace(["\r", "\n", "\t"], ' ', $src);
+        $dst = str_replace(["\r", "\n", "\t"], ' ', $dst);
+        $src = trim($src);
+        $dst = trim($dst);
         if ($src !== '' && $dst !== '') {
             $rows[] = $src . "\t" . $dst;
         }
@@ -87,7 +92,11 @@ if (empty($errors)) {
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POSTFIELDS => http_build_query($payload),
-        CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
+        CURLOPT_HTTPHEADER => [
+            'Authorization: DeepL-Auth-Key ' . $apiKey,
+            'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+            'Accept: application/json'
+        ],
         CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT => 60,
     ]);
@@ -98,6 +107,7 @@ if (empty($errors)) {
         header('Location: glossary.php?created=1');
         exit;
     } else {
+        error_log('glossary_save create failed: HTTP ' . ($code ?: 'n/a') . ' body=' . substr((string)$res, 0, 500));
         $errors[] = '用語集の作成に失敗しました';
     }
 }
