@@ -35,7 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     exit('Method Not Allowed');
 }
-if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+$sessionToken = $_SESSION['csrf_token'] ?? '';
+$postToken = $_POST['csrf_token'] ?? '';
+if ($sessionToken === '' || $postToken === '' || !hash_equals($sessionToken, $postToken)) {
     http_response_code(400);
     exit('Invalid CSRF token');
 }
