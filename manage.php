@@ -1,7 +1,7 @@
 <?php
-session_start();
-require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/includes/common.php';
+secure_session_start();
+require_once __DIR__ . '/vendor/autoload.php';
 const RATE_JPY_PER_MILLION = 2500;
 
 // .env を読み込む（DeepLの設定値のため）
@@ -288,7 +288,7 @@ function cost_jpy(int $c): int {
               <select name="glossary_id" class="glossary-select" form="<?= h($formId) ?>">
                 <option value="" selected>未使用</option>
                 <?php foreach ($glossaries as $g): ?>
-                  <option value="<?= h($g['glossary_id']) ?>" data-target-lang="<?= h($g['target_lang'] ?? '') ?>">
+                  <option value="<?= h($g['glossary_id']) ?>" data-source-lang="<?= h($g['source_lang'] ?? '') ?>" data-target-lang="<?= h($g['target_lang'] ?? '') ?>">
                     <?= h(($g['name'] ?? $g['glossary_id']) . ' (' . ($g['source_lang'] ?? '') . '→' . ($g['target_lang'] ?? '') . ')') ?>
                   </option>
                 <?php endforeach; ?>
@@ -381,9 +381,12 @@ document.addEventListener('DOMContentLoaded', function(){
 
       // Glossary のターゲット言語と整合チェック
       const gSel = document.querySelector('.glossary-select[form="' + form.id + '"]');
+      let sourceLang = '';
       if (gSel && gSel.value) {
         const opt = gSel.options[gSel.selectedIndex];
         const gTgt = opt ? (opt.getAttribute('data-target-lang') || '') : '';
+        sourceLang = opt ? (opt.getAttribute('data-source-lang') || '') : '';
+        
         const norm = s => s.toUpperCase().split('-')[0];
         if (gTgt && norm(gTgt) !== norm(tgt)) {
           alert('選択した用語集の言語が翻訳先と一致しません。');
@@ -391,38 +394,97 @@ document.addEventListener('DOMContentLoaded', function(){
         }
       }
 
-      showSpinner();
-      updateSpinner(0, '翻訳実行中…');
+      showSpinner('準備中…');
+      updateSpinner(0, '準備中…');
+      
       const fd = new FormData(form);
-      const timer = setInterval(() => {
-        fetch('progress.php', { credentials: 'same-origin' })
-          .then(r => r.json())
-          .then(d => {
-            updateSpinner(d.percent, d.message);
-            if (d.percent >= 100) {
-              clearInterval(timer);
-            }
-          })
-          .catch(() => {});
-      }, 1000);
+      fd.append('action', 'start');
+      if (sourceLang) {
+          fd.append('source_lang', sourceLang);
+      }
 
-        fetch('translate.php', {method: 'POST', body: fd, credentials: 'same-origin'})
-        .then(res => {
-          if (!res.ok) throw new Error('翻訳に失敗しました');
-          return res;
+      fetch('translate.php', { method: 'POST', body: fd })
+        .then(async r => {
+            if (!r.ok) {
+                let msg = 'Server Error ' + r.status;
+                try {
+                    const err = await r.json();
+                    if (err.error) msg = err.error;
+                } catch (e) {}
+                throw new Error(msg);
+            }
+            return r.json();
         })
-        .then(res => {
-          clearInterval(timer);
-          if (res.redirected) {
-            window.location.href = res.url;
-          } else {
-            hideSpinner();
-          }
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            if (data.status !== 'queued') throw new Error('Unexpected status');
+
+            const docId = data.document_id;
+            const docKey = data.document_key;
+            // Needed for download/check
+            const filename = fd.get('filename');
+            const outputFormat = fd.get('output_format') || '';
+            const ext = data.ext || '';
+
+            // Polling function
+            const poll = () => {
+                const checkFd = new FormData();
+                checkFd.append('action', 'check');
+                checkFd.append('document_id', docId);
+                checkFd.append('document_key', docKey);
+                checkFd.append('filename', filename);
+                checkFd.append('output_format', outputFormat);
+                checkFd.append('ext', ext);
+                // Also pass target_lang for file suffix generation on backend if needed, 
+                // though backend might parse from filename or we pass it. 
+                // Let's pass target_lang just in case.
+                checkFd.append('target_lang', tgt);
+
+                fetch('translate.php', { method: 'POST', body: checkFd })
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.error) {
+                            hideSpinner();
+                            alert('エラー: ' + res.error);
+                            return;
+                        }
+                        if (res.status === 'done') {
+                            updateSpinner(100, '完了');
+                            setTimeout(() => {
+                                hideSpinner();
+                                window.location.href = 'manage.php'; // Reload to show results? Or redirect to download?
+                                // Original behavior was redirect to result page "translate.php" HTML output?
+                                // Ah, original translate.php outputted HTML at the end. 
+                                // New translate.php returns JSON.
+                                // We should probably reload the page OR show a download link.
+                                // Let's reload for now to reflect history/cost updates.
+                                alert('翻訳完了');
+                                // Optional: prompt download
+                                if (res.download_url) {
+                                    window.location.href = res.download_url;
+                                }
+                                setTimeout(() => window.location.reload(), 1000);
+                            }, 500);
+                        } else {
+                            // translating
+                            let msg = '翻訳中…';
+                            if (res.seconds_remaining) msg += ' (残り約 ' + res.seconds_remaining + '秒)';
+                            updateSpinner(50, msg);
+                            setTimeout(poll, 1500);
+                        }
+                    })
+                    .catch(err => {
+                        hideSpinner();
+                        alert('通信エラー: ' + err.message);
+                    });
+            };
+            
+            updateSpinner(10, '送信完了、翻訳開始…');
+            poll();
         })
         .catch(err => {
-          clearInterval(timer);
-          hideSpinner();
-          alert(err.message || '翻訳に失敗しました');
+            hideSpinner();
+            alert('開始失敗: ' + err.message);
         });
     });
   });

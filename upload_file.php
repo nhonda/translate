@@ -1,7 +1,7 @@
 <?php
-session_start();
-require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/includes/common.php';
+secure_session_start();
+require_once __DIR__ . '/vendor/autoload.php';
 
 $dotenv = \Dotenv\Dotenv::createImmutable(__DIR__);
 if (file_exists(__DIR__ . '/.env')) {
@@ -48,10 +48,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['file']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
         $original = basename($_FILES['file']['name']);
         $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
+        
+        // Revert to Timestamp naming as requested
         $filename = date('Ymd_His') . '_' . $original;
+        
         $dest = "$uploadsDir/$filename";
-
-        if (!move_uploaded_file($_FILES['file']['tmp_name'], $dest)) {
+        
+        // MIME Type validation using FileInfo
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($_FILES['file']['tmp_name']);
+        
+        // Allowed MIME types
+        $allowedMimes = [
+            'text/plain',
+            'application/pdf',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+            'application/msword', // doc
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
+        ];
+        // Allow empty/octet-stream for some cases or strict? 
+        // DeepL supports specific formats.
+        
+        if (!in_array($mime, $allowedMimes)) {
+            $message = '許可されていないファイル形式です (' . htmlspecialchars($mime) . ')';
+        } elseif (!move_uploaded_file($_FILES['file']['tmp_name'], $dest)) {
             $message = 'ファイルの保存に失敗しました';
         } else {
             $allowed = ['txt','pdf','docx','xlsx','pptx'];
@@ -363,9 +384,12 @@ function count_chars_local(string $path): int|false {
         const tgt = tgtSel ? tgtSel.value : '';
         if (!tgt) return;
         const gField = document.getElementById('glossary_id');
+        let sourceLang = '';
         if (gField) {
           const opt = gField.options[gField.selectedIndex];
           const gTgt = opt ? opt.getAttribute('data-target-lang') : '';
+          sourceLang = opt ? (opt.getAttribute('data-source-lang') || '') : '';
+          
           const norm = s => s.toUpperCase().split('-')[0];
           if (gField.value && gTgt && norm(gTgt) !== norm(tgt)) {
             alert('選択した用語集の言語が翻訳先と一致しません。');
@@ -373,40 +397,91 @@ function count_chars_local(string $path): int|false {
           }
         }
 
-        showSpinner();
+        showSpinner('準備中…');
+        updateSpinner(0, '準備中…');
+        
         const fd = new FormData(form);
-        const poll = () => {
-          fetch('progress.php', { credentials: 'same-origin' })
-            .then(r => r.json())
-            .then(d => {
-              updateSpinner(d.percent, d.message);
-              if (d.percent >= 100) {
-                clearInterval(timer);
-              }
-            })
-            .catch(() => {});
-        };
-        poll();
-        const timer = setInterval(poll, 1000);
+        fd.append('action', 'start');
+        if (sourceLang) {
+            fd.append('source_lang', sourceLang);
+        }
 
-        fetch('translate.php', {method: 'POST', body: fd, credentials: 'same-origin'})
-          .then(res => {
-            if (!res.ok) throw new Error('翻訳に失敗しました');
-            return res;
-          })
-          .then(res => {
-            clearInterval(timer);
-            if (res.redirected) {
-              window.location.href = res.url;
-            } else {
-              hideSpinner();
-            }
-          })
-          .catch(err => {
-            clearInterval(timer);
-            hideSpinner();
-            alert(err.message || '翻訳に失敗しました');
-          });
+        fetch('translate.php', { method: 'POST', body: fd })
+            .then(async r => {
+                if (!r.ok) {
+                    let msg = 'Server Error ' + r.status;
+                    try {
+                        const err = await r.json();
+                        if (err.error) msg = err.error;
+                    } catch (e) {}
+                    throw new Error(msg);
+                }
+                return r.json();
+            })
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                if (data.status !== 'queued') throw new Error('Unexpected status');
+
+                const docId = data.document_id;
+                const docKey = data.document_key;
+                const filename = fd.get('filename');
+                const outputFormat = document.getElementById('output_format') ? document.getElementById('output_format').value : '';
+                const ext = data.ext || '';
+
+                // Polling function
+                const poll = () => {
+                    const checkFd = new FormData();
+                    checkFd.append('action', 'check');
+                    checkFd.append('document_id', docId);
+                    checkFd.append('document_key', docKey);
+                    checkFd.append('filename', filename);
+                    checkFd.append('output_format', outputFormat);
+                    checkFd.append('ext', ext);
+                    checkFd.append('target_lang', tgt);
+
+                    fetch('translate.php', { method: 'POST', body: checkFd })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (res.error) {
+                                hideSpinner();
+                                alert('エラー: ' + res.error);
+                                return;
+                            }
+                            if (res.status === 'done') {
+                                updateSpinner(100, '完了');
+                                setTimeout(() => {
+                                    hideSpinner();
+                                    alert('翻訳完了');
+                                    if (res.download_url) {
+                                        window.location.href = res.download_url;
+                                    }
+                                    // Redirect to manage page after generic upload/translate flow?
+                                    // Or stay here?
+                                    // Original flow might have shown result.
+                                    // Let's go to manage page so user can see history.
+                                    setTimeout(() => window.location.href = 'manage.php', 1000);
+                                }, 500);
+                            } else {
+                                // translating
+                                let msg = '翻訳中…';
+                                if (res.seconds_remaining) msg += ' (残り約 ' + res.seconds_remaining + '秒)';
+                                updateSpinner(50, msg);
+                                setTimeout(poll, 1500);
+                            }
+                        })
+                        .catch(err => {
+                            hideSpinner();
+                            alert('通信エラー: ' + err.message);
+                        });
+                };
+                
+                updateSpinner(10, '送信完了、翻訳開始…');
+                poll();
+            })
+            .catch(err => {
+                hideSpinner();
+                alert('開始失敗: ' + err.message);
+            });
       });
     }
   </script>

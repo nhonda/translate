@@ -1,6 +1,6 @@
 <?php
-session_start();
 require_once __DIR__ . '/includes/common.php';
+secure_session_start();
 const RATE_JPY_PER_MILLION = 2500;
 $dir = __DIR__ . '/downloads';
 $allFiles = is_dir($dir) ? array_values(array_diff(scandir($dir), ['.', '..'])) : [];
