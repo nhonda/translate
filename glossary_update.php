@@ -148,7 +148,7 @@ if (empty($errors)) {
                 $payloadRetry = $payload;
                 $payloadRetry['source_lang'] = strtoupper($payload['source_lang'] ?? '');
                 $payloadRetry['target_lang'] = strtoupper($payload['target_lang'] ?? '');
-                $urlRetry = $apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey);
+                $urlRetry = $apiBase . '/glossaries';
                 $ch = curl_init($urlRetry);
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,
@@ -265,7 +265,7 @@ if (empty($errors)) {
                 $payloadRetry = $payload;
                 $payloadRetry['source_lang'] = strtoupper($payload['source_lang'] ?? '');
                 $payloadRetry['target_lang'] = strtoupper($payload['target_lang'] ?? '');
-                $urlRetry = $apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey);
+                $urlRetry = $apiBase . '/glossaries';
                 $ch = curl_init($urlRetry);
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,

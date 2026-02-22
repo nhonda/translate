@@ -112,7 +112,7 @@ if (empty($terms)) {
 }
 
 // 同名で言語が逆の用語集を探索
-$ch = curl_init($apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey));
+$ch = curl_init($apiBase . '/glossaries');
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
@@ -248,7 +248,7 @@ function lang_jp_label(string $code): string {
   </table>
   <button type="button" id="add-row">＋行追加</button>
 
-  
+
 
   <div class="action-btn">
     <button type="submit">更新</button>

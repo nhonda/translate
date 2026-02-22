@@ -42,7 +42,7 @@ if ($apiKey === '') {
 $apiBase = rtrim(env_non_empty('DEEPL_API_BASE'), '/');
 $glossaries = [];
 if ($apiKey !== '' && $apiBase !== '') {
-    $ch = curl_init($apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey));
+    $ch = curl_init($apiBase . '/glossaries');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
@@ -202,7 +202,7 @@ if ($orderChanged) {
     <label>名前: <input type="text" name="name" value="デフォルトの用語集" required></label>
   </div>
   <div style="margin:8px 0;">
-    <label>言語方向: 
+    <label>言語方向:
       <select name="direction" id="direction">
         <option value="EN-JA" selected>EN → JA</option>
         <option value="JA-EN">JA → EN</option>

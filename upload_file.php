@@ -48,16 +48,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['file']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
         $original = basename($_FILES['file']['name']);
         $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
-        
+
         // Revert to Timestamp naming as requested
         $filename = date('Ymd_His') . '_' . $original;
-        
+
         $dest = "$uploadsDir/$filename";
-        
+
         // MIME Type validation using FileInfo
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $mime = $finfo->file($_FILES['file']['tmp_name']);
-        
+
         // Allowed MIME types
         $allowedMimes = [
             'text/plain',
@@ -67,9 +67,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
             'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
         ];
-        // Allow empty/octet-stream for some cases or strict? 
+        // Allow empty/octet-stream for some cases or strict?
         // DeepL supports specific formats.
-        
+
         if (!in_array($mime, $allowedMimes)) {
             $message = '許可されていないファイル形式です (' . htmlspecialchars($mime) . ')';
         } elseif (!move_uploaded_file($_FILES['file']['tmp_name'], $dest)) {
@@ -119,7 +119,7 @@ if ($apiKey === '') {
 $apiBase = rtrim(env_non_empty('DEEPL_API_BASE'), '/');
 $defaultGlossary = '';
 if ($step === 'confirm' && $apiKey !== '' && $apiBase !== '') {
-    $ch = curl_init($apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey));
+    $ch = curl_init($apiBase . '/glossaries');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
@@ -389,7 +389,7 @@ function count_chars_local(string $path): int|false {
           const opt = gField.options[gField.selectedIndex];
           const gTgt = opt ? opt.getAttribute('data-target-lang') : '';
           sourceLang = opt ? (opt.getAttribute('data-source-lang') || '') : '';
-          
+
           const norm = s => s.toUpperCase().split('-')[0];
           if (gField.value && gTgt && norm(gTgt) !== norm(tgt)) {
             alert('選択した用語集の言語が翻訳先と一致しません。');
@@ -399,7 +399,7 @@ function count_chars_local(string $path): int|false {
 
         showSpinner('準備中…');
         updateSpinner(0, '準備中…');
-        
+
         const fd = new FormData(form);
         fd.append('action', 'start');
         if (sourceLang) {
@@ -474,7 +474,7 @@ function count_chars_local(string $path): int|false {
                             alert('通信エラー: ' + err.message);
                         });
                 };
-                
+
                 updateSpinner(10, '送信完了、翻訳開始…');
                 poll();
             })

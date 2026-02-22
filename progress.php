@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/includes/common.php';
+secure_session_start();
 $sid = session_id();
 session_write_close();
 header('Content-Type: application/json');

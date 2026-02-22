@@ -188,7 +188,7 @@ function cost_jpy(int $c): int {
     $defaultGlossary = '';
     $glossaries = [];
     if ($apiKey !== '' && $apiBase !== '') {
-        $ch = curl_init($apiBase . '/glossaries?auth_key=' . rawurlencode($apiKey));
+        $ch = curl_init($apiBase . '/glossaries');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => ['Authorization: DeepL-Auth-Key ' . $apiKey],
@@ -386,7 +386,7 @@ document.addEventListener('DOMContentLoaded', function(){
         const opt = gSel.options[gSel.selectedIndex];
         const gTgt = opt ? (opt.getAttribute('data-target-lang') || '') : '';
         sourceLang = opt ? (opt.getAttribute('data-source-lang') || '') : '';
-        
+
         const norm = s => s.toUpperCase().split('-')[0];
         if (gTgt && norm(gTgt) !== norm(tgt)) {
           alert('選択した用語集の言語が翻訳先と一致しません。');
@@ -396,7 +396,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
       showSpinner('準備中…');
       updateSpinner(0, '準備中…');
-      
+
       const fd = new FormData(form);
       fd.append('action', 'start');
       if (sourceLang) {
@@ -435,8 +435,8 @@ document.addEventListener('DOMContentLoaded', function(){
                 checkFd.append('filename', filename);
                 checkFd.append('output_format', outputFormat);
                 checkFd.append('ext', ext);
-                // Also pass target_lang for file suffix generation on backend if needed, 
-                // though backend might parse from filename or we pass it. 
+                // Also pass target_lang for file suffix generation on backend if needed,
+                // though backend might parse from filename or we pass it.
                 // Let's pass target_lang just in case.
                 checkFd.append('target_lang', tgt);
 
@@ -454,7 +454,7 @@ document.addEventListener('DOMContentLoaded', function(){
                                 hideSpinner();
                                 window.location.href = 'manage.php'; // Reload to show results? Or redirect to download?
                                 // Original behavior was redirect to result page "translate.php" HTML output?
-                                // Ah, original translate.php outputted HTML at the end. 
+                                // Ah, original translate.php outputted HTML at the end.
                                 // New translate.php returns JSON.
                                 // We should probably reload the page OR show a download link.
                                 // Let's reload for now to reflect history/cost updates.
@@ -478,7 +478,7 @@ document.addEventListener('DOMContentLoaded', function(){
                         alert('通信エラー: ' + err.message);
                     });
             };
-            
+
             updateSpinner(10, '送信完了、翻訳開始…');
             poll();
         })
